@@ -31,6 +31,14 @@ typedef struct
     uint8_t profile_order[PROFILE_COUNT];
 } __attribute__((packed)) global_settings;
 
+void loadGlobals(global_settings globals);
+
+void loadProfile(profile p, uint8_t n);
+
+void saveGlobals(global_settings globals);
+
+void saveProfile(profile p, uint8_t n);
+
 #define GLOBALS_SIZE sizeof(global_settings)
 #define DEVICE_SIZE sizeof(device_profile)
 #define PROFILE_SIZE sizeof(profile)
