@@ -16,14 +16,21 @@ Adafruit_NeoPixel strip = Adafruit_NeoPixel(LED_COUNT, 4, NEO_GRB + NEO_KHZ800);
 ESP8266WebServer server(80);
 
 #define FLAG_NEW_FRAME (1 << 0)
+#define FLAG_PROFILE_UPDATED (1 << 1)
 
 os_timer_t frameTimer;
 volatile uint32_t frame;
 volatile uint8_t flags;
 
 global_settings globals;
+#define increment_profile() globals.n_profile = (globals.n_profile+1)%globals.profile_count
+
+#define refresh_profile() load_profile(&current_profile, globals.profile_order[globals.n_profile]); \
+convert_to_frames(frames, current_profile.devices[0].timing)
+
 profile current_profile;
 uint16_t frames[TIME_COUNT];
+uint32_t auto_increment;
 
 uint16_t time_to_frames(uint8_t time)
 {
@@ -59,7 +66,7 @@ void convert_to_frames(uint16_t *frames, uint8_t *times)
     for(uint8_t i = 0; i < TIME_COUNT; ++i)
     {
         frames[i] = time_to_frames(times[i]);
-        Serial.println(String(i)+": "+String(times[i])+" -> "+String(frames[i]));
+        Serial.println(String(i) + ": " + String(times[i]) + " -> " + String(frames[i]));
     }
 }
 
@@ -122,6 +129,14 @@ void user_init()
     os_timer_arm(&frameTimer, 10, true);
 }
 
+void eeprom_init()
+{
+    EEPROM.begin(SPI_FLASH_SEC_SIZE);
+    load_globals(&globals);
+    auto_increment = autoincrement_to_frames(globals.auto_increment);
+    refresh_profile();
+}
+
 void setup()
 {
 #ifdef SERIAL_DEBUG
@@ -145,15 +160,10 @@ void setup()
     Serial.println("|---------------------------|");
 #endif /* SERIAL_DEBUG */
 
-    EEPROM.begin(SPI_FLASH_SEC_SIZE);
-    loadGlobals(globals);
-    loadProfile(current_profile, globals.profile_order[globals.n_profile]);
-
-    convert_to_frames(frames, current_profile.devices[0].timing);
-
     strip.begin();
     server.begin();
 
+    eeprom_init();
     user_init();
 }
 
@@ -163,6 +173,18 @@ void loop()
 
     if(flags & FLAG_NEW_FRAME)
     {
+        if(auto_increment && frame && frame % auto_increment == 0 && globals.leds_enabled)
+        {
+            if(flags & FLAG_PROFILE_UPDATED)
+            {
+                save_profile(&current_profile, globals.profile_order[globals.n_profile]);
+                flags &= ~FLAG_PROFILE_UPDATED;
+            }
+            increment_profile();
+            refresh_profile();
+            frame = 0;
+        }
+
         device_profile &device = current_profile.devices[0];
         digital_effect(static_cast<effect>(device.effect), strip.getPixels(), LED_COUNT, 0, frame, frames, device.args,
                        device.colors, device.color_count, device.color_cycles);

@@ -2,7 +2,7 @@
 #include <EEPROM.h>
 #include <HardwareSerial.h>
 
-void loadProfile(profile *p, uint8_t n)
+void load_profile(profile *p, uint8_t n)
 {
     for(uint8_t t = 0; t < PROFILE_SIZE; t++)
     {
@@ -11,7 +11,7 @@ void loadProfile(profile *p, uint8_t n)
     }
 }
 
-void saveProfile(profile *p, uint8_t n)
+void save_profile(profile *p, uint8_t n)
 {
     for(uint8_t t = 0; t < PROFILE_SIZE; t++)
     {
@@ -20,7 +20,7 @@ void saveProfile(profile *p, uint8_t n)
     EEPROM.commit();
 }
 
-void loadGlobals(global_settings *globals)
+void load_globals(global_settings *globals)
 {
     for(uint8_t t = 0; t < GLOBALS_SIZE; t++)
     {
@@ -28,7 +28,7 @@ void loadGlobals(global_settings *globals)
     }
 }
 
-void saveGlobals(global_settings *globals)
+void save_globals(global_settings *globals)
 {
     for(uint8_t t = 0; t < GLOBALS_SIZE; t++)
     {
