@@ -9,6 +9,7 @@
 
 #define LED_COUNT 48
 #define AP_NAME "LED Controller"
+#define CONFIG_PAGE "http://led/"
 
 #define PROFILE_COUNT 24
 #define COLOR_COUNT 16
@@ -17,5 +18,6 @@
 #define TIME_COUNT 6
 
 #define USER_DEBUG
+#define DEBUG 1
 
 #endif //WIFICONTROLLER_CONFIG_H

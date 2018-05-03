@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include <WiFiManager.h>
-#include <ESP8266WebServer.cpp>
+#include <ESP8266WebServer.h>
 #include <Adafruit_NeoPixel.h>
 #include <EEPROM.h>
 
@@ -191,6 +191,12 @@ void ICACHE_FLASH_ATTR receive_globals()
     }
 }
 
+void ICACHE_FLASH_ATTR redirect_to_config()
+{
+    server.sendHeader("Location", CONFIG_PAGE);
+    server.send(301);
+}
+
 void ICACHE_FLASH_ATTR receive_profile()
 {
     if(server.hasArg("plain") && server.arg("plain").length() == PROFILE_SIZE + 1 && server.method() == HTTP_PUT)
@@ -217,6 +223,74 @@ void ICACHE_FLASH_ATTR receive_profile()
         server.send(400);
 #endif /* USER_DEBUG */
     }
+}
+
+uint8_t char2int(char input)
+{
+    if(input >= '0' && input <= '9')
+        return input - '0';
+    if(input >= 'A' && input <= 'F')
+        return input + 10 - 'A';
+    if(input >= 'a' && input <= 'f')
+        return input + 10 - 'a';
+    return 0;
+}
+
+void ICACHE_FLASH_ATTR receive_color()
+{
+    if(server.hasArg("plain") && server.arg("plain").length() == 6 && server.method() == HTTP_POST)
+    {
+        const String &c = server.arg("plain");
+        uint8_t r = char2int(c[0]) * 16 + char2int(c[1]);
+        uint8_t g = char2int(c[2]) * 16 + char2int(c[3]);
+        uint8_t b = char2int(c[4]) * 16 + char2int(c[5]);
+
+        if(flags & FLAG_PROFILE_UPDATED)
+        {
+            save_profile(&current_profile, globals.profile_order[globals.n_profile]);
+            flags &= ~FLAG_PROFILE_UPDATED;
+        }
+
+        current_profile.devices[0].effect = BREATHE;
+        current_profile.devices[0].timing[TIME_FADEIN] = 0;
+        current_profile.devices[0].timing[TIME_FADEOUT] = 0;
+        current_profile.devices[0].timing[TIME_ON] = 1;
+        current_profile.devices[0].timing[TIME_OFF] = 0;
+        current_profile.devices[0].color_count = 1;
+        current_profile.devices[0].args[ARG_BREATHE_END] = 255;
+        current_profile.devices[0].colors[0] = g;
+        current_profile.devices[0].colors[1] = r;
+        current_profile.devices[0].colors[2] = b;
+        convert_to_frames(frames, current_profile.devices[0].timing);
+
+        server.send(200, "application/json", R"({"status": "success"})");
+    }
+    else
+    {
+        server.send(400, "text/html", "Invalid request");
+    }
+}
+
+void ICACHE_FLASH_ATTR handle_root()
+{
+    server.send(200, "text/html", "<!DOCTYPE html>\n"
+            "<html lang=\"en\">\n"
+            "<head>\n"
+            "    <meta charset=\"UTF-8\">\n"
+            "    <title>Title</title>\n"
+            "</head>\n"
+            "<body>\n"
+            "<input name=\"color\" type=\"color\">\n"
+            "<script>\n"
+            "    document.getElementsByTagName(\"input\")[0].addEventListener(\"change\", function (e) {\n"
+            "        var http = new XMLHttpRequest();\n"
+            "        var url = \"color\";\n"
+            "        http.open(\"POST\", url, true);\n"
+            "        http.send(e.target.value.substring(1));\n"
+            "    });\n"
+            "</script>\n"
+            "</body>\n"
+            "</html>");
 }
 
 void setup()
@@ -246,10 +320,14 @@ void setup()
 #endif /* USER_DEBUG */
 
 #ifdef USER_DEBUG
-    server.on("/", debug_info);
+    server.on("/debug", debug_info);
 #endif /* USER_DEBUG */
+
+    server.on("/", handle_root);
+    server.on("/config", redirect_to_config);
     server.on("/globals", receive_globals);
     server.on("/profile", receive_profile);
+    server.on("/color", receive_color);
 
     strip.begin();
     server.begin();
