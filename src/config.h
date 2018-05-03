@@ -16,6 +16,6 @@
 #define ARG_COUNT 5
 #define TIME_COUNT 6
 
-#define SERIAL_DEBUG
+#define USER_DEBUG
 
 #endif //WIFICONTROLLER_CONFIG_H

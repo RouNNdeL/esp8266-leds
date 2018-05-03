@@ -66,7 +66,6 @@ void convert_to_frames(uint16_t *frames, uint8_t *times)
     for(uint8_t i = 0; i < TIME_COUNT; ++i)
     {
         frames[i] = time_to_frames(times[i]);
-        Serial.println(String(i) + ": " + String(times[i]) + " -> " + String(frames[i]));
     }
 }
 
@@ -137,9 +136,92 @@ void eeprom_init()
     refresh_profile();
 }
 
+#ifdef USER_DEBUG
+
+void ICACHE_FLASH_ATTR debug_info()
+{
+    String content = "<h2>"+String(AP_NAME)+"</h2>";
+    content += "<p>leds_enabled: <b>" + String(globals.leds_enabled) + "</b></p>";
+    content += "<p>brightness: <b>[";
+    for(uint8_t i : globals.brightness)
+    {
+        content += String(i) + ",";
+    }
+    content += "]</b></p>";
+    content += "<p>profile_count: <b>" + String(globals.profile_count) + "</b></p>";
+    content += "<p>auto_increment: <b>" + String(globals.auto_increment) + "</b></p>";
+    content += "<p>auto_increment frames: <b>" + String(auto_increment) + "</b></p>";
+    content += "<p>current_profile: <b>" + String(globals.n_profile) + "</b></p>";
+    content += "<p>profile_order: <b>[";
+    for(uint8_t i : globals.profile_order)
+    {
+        content += String(i) + ",";
+    }
+    content += "]</b></p>";
+    server.send(200, "text/html", content);
+}
+
+#endif
+
+void ICACHE_FLASH_ATTR receive_globals()
+{
+    if(server.hasArg("plain") && server.arg("plain").length() == GLOBALS_SIZE && server.method() == HTTP_PUT)
+    {
+        uint8_t previous_profile = globals.profile_order[globals.n_profile];
+        uint8_t previous_auto_increment = globals.auto_increment;
+        memcpy(&globals, server.arg("plain").begin(), GLOBALS_SIZE);
+        if(previous_profile != globals.profile_order[globals.n_profile])
+        {
+            refresh_profile();
+        }
+        if(previous_auto_increment != globals.auto_increment)
+        {
+            auto_increment = autoincrement_to_frames(globals.auto_increment);
+        }
+        save_globals(&globals);
+        server.send(204);
+    }
+    else
+    {
+#ifdef USER_DEBUG
+        server.send(400, "text/html", "<h2>HTTP 400 Invalid Request</h2>");
+#else
+        server.send(400);
+#endif /* USER_DEBUG */
+    }
+}
+
+void ICACHE_FLASH_ATTR receive_profile()
+{
+    if(server.hasArg("plain") && server.arg("plain").length() == PROFILE_SIZE + 1 && server.method() == HTTP_PUT)
+    {
+        uint8_t n = server.arg("plain")[0];
+        if(globals.n_profile == n)
+        {
+            memcpy(&current_profile, server.arg("plain").begin() + 1, PROFILE_SIZE);
+            flags |= FLAG_PROFILE_UPDATED;
+        }
+        else
+        {
+            profile tmp; // NOLINT
+            memcpy(&tmp, server.arg("plain").begin() + 1, PROFILE_SIZE);
+            save_profile(&tmp, n);
+        }
+        memcpy(&globals, server.arg("plain").begin(), GLOBALS_SIZE);
+    }
+    else
+    {
+#ifdef USER_DEBUG
+        server.send(400, "text/html", "<h2>HTTP 400 Invalid Request</h2>");
+#else
+        server.send(400);
+#endif /* USER_DEBUG */
+    }
+}
+
 void setup()
 {
-#ifdef SERIAL_DEBUG
+#ifdef USER_DEBUG
     Serial.begin(115200);
 
     Serial.println("");
@@ -147,18 +229,27 @@ void setup()
     Serial.println("|------ Begin Startup ------|");
     Serial.println("| LED Controller by RouNdeL |");
     Serial.println("|---------------------------|");
-#endif /* SERIAL_DEBUG */
+#endif /* USER_DEBUG */
 
     WiFiManager manager;
+#ifndef USER_DEBUG
+    manager.setDebugOutput(0);
+#endif
     manager.setAPStaticIPConfig(IPAddress(192, 168, 1, 1), IPAddress(192, 168, 1, 1), IPAddress(255, 255, 255, 0));
     manager.setConfigPortalTimeout(60);
     manager.autoConnect(AP_NAME);
 
-#ifdef SERIAL_DEBUG
+#ifdef USER_DEBUG
     Serial.println("|---------------------------|");
     Serial.println("|------- Start LEDs --------|");
     Serial.println("|---------------------------|");
-#endif /* SERIAL_DEBUG */
+#endif /* USER_DEBUG */
+
+#ifdef USER_DEBUG
+    server.on("/", debug_info);
+#endif /* USER_DEBUG */
+    server.on("/globals", receive_globals);
+    server.on("/profile", receive_profile);
 
     strip.begin();
     server.begin();
@@ -173,7 +264,7 @@ void loop()
 
     if(flags & FLAG_NEW_FRAME)
     {
-        if(auto_increment && frame && frame % auto_increment == 0 && globals.leds_enabled)
+        if(auto_increment && frame && frame % auto_increment == 0 && globals.leds_enabled && globals.profile_count > 1)
         {
             if(flags & FLAG_PROFILE_UPDATED)
             {
