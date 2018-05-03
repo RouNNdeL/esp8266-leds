@@ -2,8 +2,10 @@
 #include <WiFiManager.h>
 #include <ESP8266WebServer.cpp>
 #include <Adafruit_NeoPixel.h>
+#include <EEPROM.h>
 
 #include "config.h"
+#include "memory.h"
 
 #define FLAG_NEW_FRAME (1 << 0)
 
@@ -12,6 +14,7 @@ ESP8266WebServer server(80);
 
 extern "C" {
 #include "user_interface.h"
+#include "color_utils.h"
 }
 
 os_timer_t frameTimer;
@@ -26,7 +29,6 @@ void timerCallback(void *pArg)
 
 void user_init()
 {
-
     os_timer_setfn(&frameTimer, timerCallback, NULL);
     os_timer_arm(&frameTimer, 10, true);
 }
@@ -56,6 +58,7 @@ void setup()
     Serial.println("|---------------------------|");
 #endif /* SERIAL_DEBUG */
 
+    EEPROM.begin(SPI_FLASH_SEC_SIZE);
     strip.begin();
     server.begin();
 
