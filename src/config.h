@@ -5,6 +5,8 @@
 #ifndef WIFICONTROLLER_CONFIG_H
 #define WIFICONTROLLER_CONFIG_H
 
+#define FPS 100
+
 #define LED_COUNT 48
 #define AP_NAME "LED Controller"
 

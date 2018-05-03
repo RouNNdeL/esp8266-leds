@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include "config.h"
+#include "color_utils.h"
 
 #ifndef WIFICONTROLLER_EEPROM_H
 #define WIFICONTROLLER_EEPROM_H
@@ -26,7 +27,6 @@ typedef struct
     uint8_t profile_count;
     uint8_t n_profile;
     uint8_t leds_enabled;
-    uint8_t fan_count;
     uint8_t auto_increment;
     uint8_t profile_order[PROFILE_COUNT];
 } __attribute__((packed)) global_settings;
