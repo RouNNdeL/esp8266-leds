@@ -140,7 +140,7 @@ void eeprom_init()
 
 void ICACHE_FLASH_ATTR debug_info()
 {
-    String content = "<h2>"+String(AP_NAME)+"</h2>";
+    String content = "<h2>" + String(AP_NAME) + "</h2>";
     content += "<p>leds_enabled: <b>" + String(globals.leds_enabled) + "</b></p>";
     content += "<p>brightness: <b>[";
     for(uint8_t i : globals.brightness)
@@ -263,6 +263,8 @@ void ICACHE_FLASH_ATTR receive_color()
         current_profile.devices[0].colors[2] = b;
         convert_to_frames(frames, current_profile.devices[0].timing);
 
+        auto_increment = 0;
+
         server.send(200, "application/json", R"({"status": "success"})");
     }
     else
@@ -271,26 +273,47 @@ void ICACHE_FLASH_ATTR receive_color()
     }
 }
 
+void ICACHE_FLASH_ATTR change_profile()
+{
+    if(server.hasArg("plain") && server.arg("plain").length() == 1 && server.method() == HTTP_POST)
+    {
+        /* We subtract the 1 added previously when creating the webpage */
+        uint8_t i = (uint8_t) server.arg("plain")[0] - 1;
+        Serial.println(String(i));
+        globals.n_profile = i;
+        refresh_profile();
+
+        auto_increment = 0;
+
+        server.send(200, "application/json", R"({"status": "success"})");
+    }
+    else
+    {
+#ifdef USER_DEBUG
+        server.send(400, "text/html", "<h2>HTTP 400 Invalid Request</h2>");
+#else
+        server.send(400);
+#endif /* USER_DEBUG */
+    }
+}
+
 void ICACHE_FLASH_ATTR handle_root()
 {
-    server.send(200, "text/html", "<!DOCTYPE html>\n"
-            "<html lang=\"en\">\n"
-            "<head>\n"
-            "    <meta charset=\"UTF-8\">\n"
-            "    <title>Title</title>\n"
-            "</head>\n"
-            "<body>\n"
-            "<input name=\"color\" type=\"color\">\n"
-            "<script>\n"
-            "    document.getElementsByTagName(\"input\")[0].addEventListener(\"change\", function (e) {\n"
-            "        var http = new XMLHttpRequest();\n"
-            "        var url = \"color\";\n"
-            "        http.open(\"POST\", url, true);\n"
-            "        http.send(e.target.value.substring(1));\n"
-            "    });\n"
-            "</script>\n"
-            "</body>\n"
-            "</html>");
+    String content = R"(<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"><title>)" +
+            String(AP_NAME)+"</title></head><body><h2>"+AP_NAME+
+            R"(</h2><p>You can change profiles and set a static color for your LEDs, for more advanced configuration click
+<a href="/config">here</a></p> <input id="a" type="color"> <select id="b">)";
+    for(uint8_t i = 0; i < globals.profile_count; ++i)
+    {
+        String selected = i == globals.n_profile ? "selected" : "";
+        /* We add 1 to avoid sending a NULL which is a String termination character in C.
+         * The profile_n endpoint will then subtract that 1 to account for that*/
+        content += "<option value=\"" + String(i + 1) + "\" " + selected + ">" + String(globals.profile_order[i]) +
+                   "</option>";
+    }
+    content += R"(</select> <script>document.getElementById("a").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("POST","/color",!0),t.send(e.target.value.substring(1))}),document.getElementById("b").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("POST","/profile_n",!0),t.send(new Uint8Array([e.target.value]))});</script> </body></html>)";
+    server.send(200, "text/html", content);
 }
 
 void setup()
@@ -327,6 +350,7 @@ void setup()
     server.on("/config", redirect_to_config);
     server.on("/globals", receive_globals);
     server.on("/profile", receive_profile);
+    server.on("/profile_n", change_profile);
     server.on("/color", receive_color);
 
     strip.begin();
@@ -355,7 +379,7 @@ void loop()
         }
 
         device_profile &device = current_profile.devices[0];
-        digital_effect(static_cast<effect>(device.effect), strip.getPixels(), LED_COUNT, 0, frame, frames, device.args,
+        digital_effect((effect) device.effect, strip.getPixels(), LED_COUNT, 0, frame, frames, device.args,
                        device.colors, device.color_count, device.color_cycles);
 
         convert_bufs();
