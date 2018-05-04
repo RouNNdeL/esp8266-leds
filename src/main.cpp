@@ -141,6 +141,7 @@ void eeprom_init()
 void ICACHE_FLASH_ATTR debug_info()
 {
     String content = "<h2>" + String(AP_NAME) + "</h2>";
+    content += "<p>config_url: <a href=\""+String(CONFIG_PAGE)+"\">"+CONFIG_PAGE+"</a></p>";
     content += "<p>leds_enabled: <b>" + String(globals.leds_enabled) + "</b></p>";
     content += "<p>brightness: <b>[";
     for(uint8_t i : globals.brightness)
