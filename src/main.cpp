@@ -141,7 +141,7 @@ void eeprom_init()
 void ICACHE_FLASH_ATTR debug_info()
 {
     String content = "<h2>" + String(AP_NAME) + "</h2>";
-    content += "<p>config_url: <a href=\""+String(CONFIG_PAGE)+"\">"+CONFIG_PAGE+"</a></p>";
+    content += "<p>config_url: <a href=\"" + String(CONFIG_PAGE) + "\">" + CONFIG_PAGE + "</a></p>";
     content += "<p>leds_enabled: <b>" + String(globals.leds_enabled) + "</b></p>";
     content += "<p>brightness: <b>[";
     for(uint8_t i : globals.brightness)
@@ -302,8 +302,8 @@ void ICACHE_FLASH_ATTR handle_root()
 {
     String content = R"(<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>)" +
-            String(AP_NAME)+"</title></head><body><h2>"+AP_NAME+
-            R"(</h2><p>You can change profiles and set a static color for your LEDs, for more advanced configuration click
+                     String(AP_NAME) + "</title></head><body><h2>" + AP_NAME +
+                     R"(</h2><p>You can change profiles and set a static color for your LEDs, for more advanced configuration click
 <a href="/config">here</a></p> <input id="a" type="color"> <select id="b">)";
     for(uint8_t i = 0; i < globals.profile_count; ++i)
     {
@@ -315,6 +315,16 @@ void ICACHE_FLASH_ATTR handle_root()
     }
     content += R"(</select> <script>document.getElementById("a").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("POST","/color",!0),t.send(e.target.value.substring(1))}),document.getElementById("b").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("POST","/profile_n",!0),t.send(new Uint8Array([e.target.value]))});</script> </body></html>)";
     server.send(200, "text/html", content);
+}
+
+void configModeCallback(WiFiManager *myWiFiManager)
+{
+    strip.begin();
+    for(uint8_t i = 0; i < LED_COUNT; ++i)
+    {
+        strip.setPixelColor(i, color_brightness(32, COLOR_CYAN));
+    }
+    strip.show();
 }
 
 void setup()
@@ -329,10 +339,21 @@ void setup()
     Serial.println("|---------------------------|");
 #endif /* USER_DEBUG */
 
+    strip.begin();
+    for(uint8_t i = 0; i < LED_COUNT; ++i)
+    {
+        if(i % 2)
+            strip.setPixelColor(i, color_brightness(32, COLOR_RED));
+        else
+            strip.setPixelColor(i, COLOR_BLACK);
+    }
+    strip.show();
+
     WiFiManager manager;
 #ifndef USER_DEBUG
     manager.setDebugOutput(0);
 #endif
+    manager.setAPCallback(configModeCallback);
     manager.setAPStaticIPConfig(IPAddress(192, 168, 1, 1), IPAddress(192, 168, 1, 1), IPAddress(255, 255, 255, 0));
     manager.setConfigPortalTimeout(60);
     manager.autoConnect(AP_NAME);
@@ -354,7 +375,6 @@ void setup()
     server.on("/profile_n", change_profile);
     server.on("/color", receive_color);
 
-    strip.begin();
     server.begin();
 
     eeprom_init();
