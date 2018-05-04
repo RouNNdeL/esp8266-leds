@@ -1,6 +1,8 @@
 #ifndef LEDCONTROLLER_COLOR_UTILS_H
 #define LEDCONTROLLER_COLOR_UTILS_H
 
+#include "config.h"
+
 #define actual_brightness(brightness) scale8(brightness, brightness)
 
 #define ARG_BIT_PACK 0
@@ -86,6 +88,17 @@ scale8(r, brightness), scale8(g, brightness), scale8(b, brightness)
 #define COLOR_MAGENTA rgb(255, 0, 255)
 #define COLOR_CYAN rgb(0, 255, 255)
 
+#if (LED_COUNT > 85)
+typedef uint16_t led_index_t;
+#else
+typedef uint8_t led_index_t;
+#endif /* (LED_COUNT > 85) */
+
+#if (LED_COUNT > 255)
+typedef uint16_t led_count_t;
+#else
+typedef uint8_t led_count_t;
+#endif /* (LED_COUNT > 255) */
 typedef enum
 {
     BREATHE = 0x00,

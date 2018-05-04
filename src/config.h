@@ -7,7 +7,7 @@
 
 #define FPS 100
 
-#define LED_COUNT 48
+#define LED_COUNT 60
 #define AP_NAME "LED Controller"
 #define CONFIG_PAGE "http://led/"
 
@@ -16,6 +16,9 @@
 #define DEVICE_COUNT 1
 #define ARG_COUNT 5
 #define TIME_COUNT 6
+
+#define SCALE8_C 1
+#define FASTLED_SCALE8_FIXED 1
 
 #define USER_DEBUG
 #define DEBUG 1

@@ -8,10 +8,78 @@ extern uint8_t debug_buffer[];
 #endif /* (COMPILE_DEBUG != 0) */
 
 /* Credit: https://github.com/FastLED/FastLED */
-uint8_t scale8(uint8_t i, uint8_t scale)
+uint8_t scale8( uint8_t i, uint8_t scale)
 {
+#if SCALE8_C == 1
+    #if (FASTLED_SCALE8_FIXED == 1)
+    return (((uint16_t)i) * (1+(uint16_t)(scale))) >> 8;
+#else
     return ((uint16_t)i * (uint16_t)(scale) ) >> 8;
+#endif
+#elif SCALE8_AVRASM == 1
+    #if defined(LIB8_ATTINY)
+#if (FASTLED_SCALE8_FIXED == 1)
+    uint8_t work=i;
+#else
+    uint8_t work=0;
+#endif
+    uint8_t cnt=0x80;
+    asm volatile(
+#if (FASTLED_SCALE8_FIXED == 1)
+        "  inc %[scale]                 \n\t"
+        "  breq DONE_%=                 \n\t"
+        "  clr %[work]                  \n\t"
+#endif
+        "LOOP_%=:                       \n\t"
+        /*"  sbrc %[scale], 0             \n\t"
+        "  add %[work], %[i]            \n\t"
+        "  ror %[work]                  \n\t"
+        "  lsr %[scale]                 \n\t"
+        "  clc                          \n\t"*/
+        "  sbrc %[scale], 0             \n\t"
+        "  add %[work], %[i]            \n\t"
+        "  ror %[work]                  \n\t"
+        "  lsr %[scale]                 \n\t"
+        "  lsr %[cnt]                   \n\t"
+        "brcc LOOP_%=                   \n\t"
+        "DONE_%=:                       \n\t"
+        : [work] "+r" (work), [cnt] "+r" (cnt)
+        : [scale] "r" (scale), [i] "r" (i)
+        :
+      );
+    return work;
+#else
+    asm volatile(
+#if (FASTLED_SCALE8_FIXED==1)
+        // Multiply 8-bit i * 8-bit scale, giving 16-bit r1,r0
+        "mul %0, %1          \n\t"
+        // Add i to r0, possibly setting the carry flag
+        "add r0, %0         \n\t"
+        // load the immediate 0 into i (note, this does _not_ touch any flags)
+        "ldi %0, 0x00       \n\t"
+        // walk and chew gum at the same time
+        "adc %0, r1          \n\t"
+#else
+         /* Multiply 8-bit i * 8-bit scale, giving 16-bit r1,r0 */
+         "mul %0, %1          \n\t"
+         /* Move the high 8-bits of the product (r1) back to i */
+         "mov %0, r1          \n\t"
+         /* Restore r1 to "0"; it's expected to always be that */
+#endif
+         "clr __zero_reg__    \n\t"
+
+         : "+a" (i)      /* writes to i */
+         : "a"  (scale)  /* uses scale */
+         : "r0", "r1"    /* clobbers r0, r1 */ );
+
+    /* Return the result */
+    return i;
+#endif
+#else
+#error "No implementation for scale8 available."
+#endif
 }
+
 
 void set_color(uint8_t *p_buf, uint8_t led, uint8_t r, uint8_t g, uint8_t b)
 {
@@ -172,7 +240,7 @@ void rotate_buf(uint8_t *leds, uint8_t led_count, uint16_t rotation_progress, ui
     for(uint8_t j = 0; j < led_count; ++j)
     {
         //TODO: Add direction argument support
-        uint8_t index = (led_count + j + led_offset - start_led) % led_count * 3;
+        led_index_t index = (led_count + j + led_offset - start_led) % led_count * 3;
 
         /* If we're at the first LED of a certain color and led_carry != 0 crossfade with the previous color */
         if(current_leds == 0 && led_carry && (bit_pack & SMOOTH))
@@ -305,7 +373,7 @@ void simple_effect(effect effect, uint8_t *color, uint32_t frame, uint16_t *time
  *               in a RGB order
  * @param color_count - how many colors are in use
  */
-void digital_effect(effect effect, uint8_t *leds, uint8_t led_count, uint8_t start_led, uint32_t frame, uint16_t *times,
+void digital_effect(effect effect, uint8_t *leds, led_count_t led_count, uint8_t start_led, uint32_t frame, uint16_t *times,
                     uint8_t *args, uint8_t *colors, uint8_t color_count, uint8_t color_cycles)
 {
     if(effect == BREATHE || effect == FADE || (effect == RAINBOW && (args[ARG_BIT_PACK] & RAINBOW_SIMPLE)))
@@ -362,7 +430,7 @@ void digital_effect(effect effect, uint8_t *leds, uint8_t led_count, uint8_t sta
 
                     uint8_t direction = (arg_number ? args[ARG_FILL_PIECE_DIRECTIONS2] :
                                          args[ARG_FILL_PIECE_DIRECTIONS1]) & (1 << piece);
-                    uint8_t index = (((direction ? i : led_count - i - 1))
+                    led_index_t index = (((direction ? i : led_count - i - 1))
                                      % piece_leds + piece * piece_leds + start_led) % led_count * 3;
 
                     uint8_t n_color_for_piece = n_color + 3 * (((piece + 8 * arg_number)) % args[ARG_FILL_COLOR_COUNT]);
@@ -400,7 +468,7 @@ void digital_effect(effect effect, uint8_t *leds, uint8_t led_count, uint8_t sta
                     piece++;
                 }
 
-                uint8_t index = (i + start_led) % led_count * 3;
+                led_index_t index = (i + start_led) % led_count * 3;
 
                 uint8_t n_color_for_piece = n_color + 3 * (piece % args[ARG_FILL_COLOR_COUNT]);
                 set_color_manual(leds + index, color_from_buf(colors + n_color_for_piece));
@@ -437,7 +505,7 @@ void digital_effect(effect effect, uint8_t *leds, uint8_t led_count, uint8_t sta
 
                 if(effect == FILLING_FADE && (args[ARG_BIT_PACK] & FILL_FADE_RETURN) && (frame / sum) % 2 == 0)
                     direction = direction ? 0 : 1;
-                uint8_t index =
+                led_index_t index =
                         (((direction ^ (args[ARG_BIT_PACK] & FILL_FADE_RETURN ? 1 : 0) ? led_count - i - 1 : i))
                          % piece_leds + piece * piece_leds + start_led) % led_count * 3;
 
@@ -518,7 +586,7 @@ void digital_effect(effect effect, uint8_t *leds, uint8_t led_count, uint8_t sta
             uint16_t led_progress_base = UINT16_MAX / led_count;
             for(uint8_t i = 0; i < led_count; ++i)
             {
-                uint8_t index =
+                led_index_t index =
                         (((args[ARG_BIT_PACK] & DIRECTION) ? i : led_count - i - 1) + start_led) % led_count * 3;
                 uint16_t d_progress =
                         (rotation_progress + i * led_progress_base) * args[ARG_RAINBOW_SOURCES] % UINT16_MAX;
@@ -564,7 +632,7 @@ void digital_effect(effect effect, uint8_t *leds, uint8_t led_count, uint8_t sta
             //<editor-fold desc="Single particle">
             for(uint8_t i = 0; i < led_count; ++i)
             {
-                uint8_t index =
+                led_index_t index =
                         (((args[ARG_BIT_PACK] & DIRECTION) ? i : led_count - i - 1) + start_led) % led_count * 3;
 
                 /* We are in front of the the particle */
@@ -630,7 +698,7 @@ void digital_effect(effect effect, uint8_t *leds, uint8_t led_count, uint8_t sta
 
         for(uint8_t i = 0; i < led_count; ++i)
         {
-            uint8_t index = (((args[ARG_BIT_PACK] & DIRECTION) ? i : led_count - i - 1) + start_led) % led_count * 3;
+            led_index_t index = (((args[ARG_BIT_PACK] & DIRECTION) ? i : led_count - i - 1) + start_led) % led_count * 3;
 
             if(args[ARG_SPECTRUM_MODES] & (1 << run))
                 cross_fade(leds + index, colors, (base_color + n_color) * 3, (base_color + m_color) * 3,
@@ -669,7 +737,7 @@ void digital_effect(effect effect, uint8_t *leds, uint8_t led_count, uint8_t sta
 
             for(uint8_t i = 0; i < led_count; ++i)
             {
-                uint8_t index =
+                led_index_t index =
                         (((args[ARG_BIT_PACK] & DIRECTION) ? i : led_count - i - 1) + start_led) % led_count * 3;
 
                 if(args[ARG_SPECTRUM_MODES] & (1 << run))
@@ -718,7 +786,7 @@ void digital_effect(effect effect, uint8_t *leds, uint8_t led_count, uint8_t sta
             uint8_t c_leds = 0;
             for(uint8_t i = 0; i < c_count; ++i)
             {
-                uint8_t index = i * 3;
+                led_index_t index = i * 3;
                 if(effect == ROTATING &&
                    (i % (led_count / args[ARG_ROTATING_ELEMENT_COUNT])) >= args[ARG_ROTATING_LED_COUNT])
                 {
@@ -746,7 +814,7 @@ void digital_effect(effect effect, uint8_t *leds, uint8_t led_count, uint8_t sta
 
             for(uint8_t i = 0; i < c_count; ++i)
             {
-                uint8_t index = i * 3;
+                led_index_t index = i * 3;
                 if(effect == ROTATING &&
                    (i % (led_count / args[ARG_PIECES_PIECE_COUNT])) >= args[ARG_ROTATING_LED_COUNT])
                 {
