@@ -134,7 +134,31 @@ void eeprom_init()
     load_globals(&globals);
     auto_increment = autoincrement_to_frames(globals.auto_increment);
     refresh_profile();
+    current_profile.devices[0].effect = BREATHE;
+    current_profile.devices[0].timing[TIME_FADEIN] = 0;
+    current_profile.devices[0].timing[TIME_FADEOUT] = 0;
+    current_profile.devices[0].timing[TIME_ON] = 60;
+    current_profile.devices[0].timing[TIME_OFF] = 0;
+    current_profile.devices[0].color_count = 1;
+    current_profile.devices[0].color_cycles = 1;
+    current_profile.devices[0].args[ARG_BREATHE_END] = 255;
+    current_profile.devices[0].colors[0] = 0;
+    current_profile.devices[0].colors[1] = 255;
+    current_profile.devices[0].colors[2] = 255;
+    save_profile(&current_profile, 1);
 }
+
+uint8_t char2int(char input)
+{
+    if(input >= '0' && input <= '9')
+        return input - '0';
+    if(input >= 'A' && input <= 'F')
+        return input + 10 - 'A';
+    if(input >= 'a' && input <= 'f')
+        return input + 10 - 'a';
+    return 0;
+}
+
 
 #ifdef USER_DEBUG
 
@@ -166,11 +190,17 @@ void ICACHE_FLASH_ATTR debug_info()
 
 void ICACHE_FLASH_ATTR receive_globals()
 {
-    if(server.hasArg("plain") && server.arg("plain").length() == GLOBALS_SIZE && server.method() == HTTP_PUT)
+    if(server.hasArg("plain") && server.arg("plain").length() == GLOBALS_SIZE*2 && server.method() == HTTP_PUT)
     {
+        uint8_t bytes[GLOBALS_SIZE];
+        auto c = server.arg("plain");
+        for(uint8_t i = 0; i < sizeof(bytes); ++i)
+        {
+            bytes[i] = char2int(c[i*2]) * 16 + char2int(c[i*2+1]);
+        }
         uint8_t previous_profile = globals.profile_order[globals.n_profile];
         uint8_t previous_auto_increment = globals.auto_increment;
-        memcpy(&globals, server.arg("plain").begin(), GLOBALS_SIZE);
+        memcpy(&globals, bytes, GLOBALS_SIZE);
         if(previous_profile != globals.profile_order[globals.n_profile])
         {
             refresh_profile();
@@ -200,21 +230,28 @@ void ICACHE_FLASH_ATTR redirect_to_config()
 
 void ICACHE_FLASH_ATTR receive_profile()
 {
-    if(server.hasArg("plain") && server.arg("plain").length() == PROFILE_SIZE + 1 && server.method() == HTTP_PUT)
+    if(server.hasArg("plain") && server.arg("plain").length() == (PROFILE_SIZE + 1)*2 && server.method() == HTTP_PUT)
     {
-        uint8_t n = server.arg("plain")[0];
-        if(globals.n_profile == n)
+        uint8_t bytes[PROFILE_SIZE + 1];
+        auto c = server.arg("plain");
+        for(uint8_t i = 0; i < sizeof(bytes); ++i)
         {
-            memcpy(&current_profile, server.arg("plain").begin() + 1, PROFILE_SIZE);
+            bytes[i] = char2int(c[i*2]) * 16 + char2int(c[i*2+1]);
+        }
+
+        if(globals.n_profile == bytes[0])
+        {
+            memcpy(&current_profile, bytes+1, PROFILE_SIZE);
+            convert_to_frames(frames, current_profile.devices[0].timing);
             flags |= FLAG_PROFILE_UPDATED;
         }
         else
         {
             profile tmp; // NOLINT
-            memcpy(&tmp, server.arg("plain").begin() + 1, PROFILE_SIZE);
-            save_profile(&tmp, n);
+            memcpy(&tmp, bytes+1, PROFILE_SIZE);
+            save_profile(&tmp, bytes[0]);
         }
-        memcpy(&globals, server.arg("plain").begin(), GLOBALS_SIZE);
+        server.send(204);
     }
     else
     {
@@ -224,17 +261,6 @@ void ICACHE_FLASH_ATTR receive_profile()
         server.send(400);
 #endif /* USER_DEBUG */
     }
-}
-
-uint8_t char2int(char input)
-{
-    if(input >= '0' && input <= '9')
-        return input - '0';
-    if(input >= 'A' && input <= 'F')
-        return input + 10 - 'A';
-    if(input >= 'a' && input <= 'f')
-        return input + 10 - 'a';
-    return 0;
 }
 
 void ICACHE_FLASH_ATTR receive_color()
