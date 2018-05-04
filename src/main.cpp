@@ -134,18 +134,6 @@ void eeprom_init()
     load_globals(&globals);
     auto_increment = autoincrement_to_frames(globals.auto_increment);
     refresh_profile();
-    current_profile.devices[0].effect = BREATHE;
-    current_profile.devices[0].timing[TIME_FADEIN] = 0;
-    current_profile.devices[0].timing[TIME_FADEOUT] = 0;
-    current_profile.devices[0].timing[TIME_ON] = 60;
-    current_profile.devices[0].timing[TIME_OFF] = 0;
-    current_profile.devices[0].color_count = 1;
-    current_profile.devices[0].color_cycles = 1;
-    current_profile.devices[0].args[ARG_BREATHE_END] = 255;
-    current_profile.devices[0].colors[0] = 0;
-    current_profile.devices[0].colors[1] = 255;
-    current_profile.devices[0].colors[2] = 255;
-    save_profile(&current_profile, 1);
 }
 
 uint8_t char2int(char input)
@@ -345,8 +333,15 @@ void ICACHE_FLASH_ATTR handle_root()
         content += "<option value=\"" + String(i + 1) + "\" " + selected + ">" + String(globals.profile_order[i]) +
                    "</option>";
     }
-    content += R"(</select> <script>document.getElementById("a").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("POST","/color",!0),t.send(e.target.value.substring(1))}),document.getElementById("b").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("POST","/profile_n",!0),t.send(new Uint8Array([e.target.value]))});</script> </body></html>)";
+    content += R"(</select><p><a href="/restart">Restart device</a></p> <script>document.getElementById("a").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("POST","/color",!0),t.send(e.target.value.substring(1))}),document.getElementById("b").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("POST","/profile_n",!0),t.send(new Uint8Array([e.target.value]))});</script> </body></html>)";
     server.send(200, "text/html", content);
+}
+
+void ICACHE_FLASH_ATTR restart()
+{
+    server.send(200, "text/html", "<p>Your device is restarting...</p><p><a href=\"/\">Go back to configuration panel</a></p>");
+    delay(500);
+    ESP.restart();
 }
 
 void configModeCallback(WiFiManager *myWiFiManager)
@@ -354,10 +349,10 @@ void configModeCallback(WiFiManager *myWiFiManager)
     strip.begin();
     for(led_count_t i = 0; i < LED_COUNT; ++i)
     {
-        if(i % 3)
-            strip.setPixelColor(i, COLOR_CYAN);
+        if(i % 4)
+            strip.setPixelColor(i, color_brightness(16, COLOR_CYAN));
         else
-            strip.setPixelColor(i, color_brightness(64, COLOR_CYAN));
+            strip.setPixelColor(i, COLOR_CYAN);
     }
     strip.show();
 }
@@ -377,10 +372,10 @@ void setup()
     strip.begin();
     for(led_count_t i = 0; i < LED_COUNT; ++i)
     {
-        if(i % 3)
-            strip.setPixelColor(i, color_brightness(128, COLOR_RED));
+        if(i % 4)
+            strip.setPixelColor(i, color_brightness(8, COLOR_RED));
         else
-            strip.setPixelColor(i, color_brightness(16, COLOR_RED));
+            strip.setPixelColor(i, color_brightness(128, COLOR_RED));
     }
     strip.show();
 
@@ -390,7 +385,7 @@ void setup()
 #endif
     manager.setAPCallback(configModeCallback);
     manager.setAPStaticIPConfig(IPAddress(192, 168, 1, 1), IPAddress(192, 168, 1, 1), IPAddress(255, 255, 255, 0));
-    manager.setConfigPortalTimeout(60);
+    manager.setConfigPortalTimeout(300);
     manager.autoConnect(AP_NAME);
 
 #ifdef USER_DEBUG
@@ -404,6 +399,7 @@ void setup()
 #endif /* USER_DEBUG */
 
     server.on("/", handle_root);
+    server.on("/restart", restart);
     server.on("/config", redirect_to_config);
     server.on("/globals", receive_globals);
     server.on("/profile", receive_profile);
@@ -448,6 +444,7 @@ void loop()
         else
         {
             strip.setBrightness(0);
+            strip.show();
         }
     }
 }
