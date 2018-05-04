@@ -203,6 +203,7 @@ void ICACHE_FLASH_ATTR receive_globals()
         memcpy(&globals, bytes, GLOBALS_SIZE);
         if(previous_profile != globals.profile_order[globals.n_profile])
         {
+            frame = 0;
             refresh_profile();
         }
         if(previous_auto_increment != globals.auto_increment)
@@ -306,10 +307,15 @@ void ICACHE_FLASH_ATTR change_profile()
     {
         /* We subtract the 1 added previously when creating the webpage */
         uint8_t i = (uint8_t) server.arg("plain")[0] - 1;
-        Serial.println(String(i));
+        if(flags & FLAG_PROFILE_UPDATED)
+        {
+            save_profile(&current_profile, globals.profile_order[globals.n_profile]);
+            flags &= ~FLAG_PROFILE_UPDATED;
+        }
         globals.n_profile = i;
         refresh_profile();
 
+        frame = 0;
         auto_increment = 0;
 
         server.send(200, "application/json", R"({"status": "success"})");
@@ -346,9 +352,12 @@ void ICACHE_FLASH_ATTR handle_root()
 void configModeCallback(WiFiManager *myWiFiManager)
 {
     strip.begin();
-    for(uint8_t i = 0; i < LED_COUNT; ++i)
+    for(led_count_t i = 0; i < LED_COUNT; ++i)
     {
-        strip.setPixelColor(i, color_brightness(32, COLOR_CYAN));
+        if(i % 3)
+            strip.setPixelColor(i, COLOR_CYAN);
+        else
+            strip.setPixelColor(i, color_brightness(64, COLOR_CYAN));
     }
     strip.show();
 }
@@ -366,12 +375,12 @@ void setup()
 #endif /* USER_DEBUG */
 
     strip.begin();
-    for(uint8_t i = 0; i < LED_COUNT; ++i)
+    for(led_count_t i = 0; i < LED_COUNT; ++i)
     {
-        if(i % 2)
-            strip.setPixelColor(i, color_brightness(32, COLOR_RED));
+        if(i % 3)
+            strip.setPixelColor(i, color_brightness(128, COLOR_RED));
         else
-            strip.setPixelColor(i, COLOR_BLACK);
+            strip.setPixelColor(i, color_brightness(16, COLOR_RED));
     }
     strip.show();
 
@@ -425,14 +434,20 @@ void loop()
             frame = 0;
         }
 
-        device_profile &device = current_profile.devices[0];
-        digital_effect((effect) device.effect, strip.getPixels(), LED_COUNT, 0, frame, frames, device.args,
-                       device.colors, device.color_count, device.color_cycles);
+        if(globals.leds_enabled)
+        {
+            device_profile &device = current_profile.devices[0];
+            digital_effect((effect) device.effect, strip.getPixels(), LED_COUNT, 0, frame, frames, device.args,
+                           device.colors, device.color_count, device.color_cycles);
 
-        convert_bufs();
-        strip.setBrightness(globals.brightness[0]);
+            convert_bufs();
 
-        strip.show();
-        flags &= ~FLAG_NEW_FRAME;
+            strip.show();
+            flags &= ~FLAG_NEW_FRAME;
+        }
+        else
+        {
+            strip.setBrightness(0);
+        }
     }
 }
