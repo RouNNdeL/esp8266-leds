@@ -332,23 +332,17 @@ void ICACHE_FLASH_ATTR handle_root()
     r = r.length() == 1 ? "0" + r : r;
     g = g.length() == 1 ? "0" + g : g;
     b = b.length() == 1 ? "0" + b : b;
-    String content = R"(<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0"><title>)" +
+    String content = R"(<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>)" +
                      String(AP_NAME) + "</title></head><body><h2>" + AP_NAME +
-                     R"(</h2><p>You can change profiles and set a static color for your LEDs, for more advanced configuration click
-<a href="/config">here</a></p> <input id="a" type="color" value="#)" + r + g + b + R"("> <select id="b">)";
+                     R"(</h2><p>You can change profiles and set a static color for your LEDs, for more advanced configuration click<a href="/config">here</a></p> <input id="a" type="color" value="#)" + r + g + b + R"("> <select id="b">)";
     for(uint8_t i = 0; i < globals.profile_count; ++i)
     {
         String selected = i == globals.n_profile ? "selected" : "";
         /* We add 1 to avoid sending a NULL which is a String termination character in C.
          * The profile_n endpoint will then subtract that 1 to account for that*/
-        content += "<option value=\"" + String(i + 1) + "\" " + selected + ">" + String(globals.profile_order[i]) +
-                   "</option>";
+        content += "<option value=\"" + String(i + 1) + "\" " + selected + ">" + String(globals.profile_order[i]) + "</option>";
     }
-    content += R"(</select><p><a href="/restart">Restart device</a></p> <script>document.getElementById("a").addEventListener
-("change",function(e){var t=new XMLHttpRequest;t.open("POST","/color",!0),t.send(e.target.value.substring(1))}),
-document.getElementById("b").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("POST","/profile_n",!0)
-,t.send(new Uint8Array([e.target.value]))});</script> </body></html>)";
+    content += R"(</select><p><a href="/restart">Restart device</a></p> <script>document.getElementById("a").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("POST","/color",!0),t.send(e.target.value.substring(1))}),document.getElementById("b").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("POST","/profile_n",!0),t.send(new Uint8Array([e.target.value]))});</script> </body></html>)";
     server.send(200, "text/html", content);
 }
 
@@ -408,7 +402,11 @@ void handleUdp()
         if(String((char *) buffer) == UDP_DISCOVERY_MSG)
         {
             Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
-            Udp.write(UDP_DISCOVERY_RESPONSE);
+            String resp = R"({"message":")" + String(UDP_DISCOVERY_RESPONSE)+ R"(", "name":")" +AP_NAME+"\"}";
+            Serial.println(resp+" ->"+String(resp.length()));
+            char bytes[resp.length()];
+            resp.toCharArray(bytes, resp.length()+1);
+            Udp.write(bytes, resp.length());
             Udp.endPacket();
         }
     }
