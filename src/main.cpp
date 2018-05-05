@@ -3,6 +3,7 @@
 #include <ESP8266WebServer.h>
 #include <Adafruit_NeoPixel.h>
 #include <EEPROM.h>
+#include <WiFiUdp.h>
 
 extern "C" {
 #include "user_interface.h"
@@ -14,6 +15,7 @@ extern "C" {
 
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(LED_COUNT, 4, NEO_GRB + NEO_KHZ800);
 ESP8266WebServer server(80);
+WiFiUDP Udp;
 
 #define FLAG_NEW_FRAME (1 << 0)
 #define FLAG_PROFILE_UPDATED (1 << 1)
@@ -158,7 +160,8 @@ void ICACHE_FLASH_ATTR debug_info()
     content += "<p>brightness: <b>[";
     for(uint8_t i : globals.brightness)
     {
-        content += String(i) + ",";
+        if(i) content+=",";
+        content += String(i);
     }
     content += "]</b></p>";
     content += "<p>profile_count: <b>" + String(globals.profile_count) + "</b></p>";
@@ -168,7 +171,8 @@ void ICACHE_FLASH_ATTR debug_info()
     content += "<p>profile_order: <b>[";
     for(uint8_t i : globals.profile_order)
     {
-        content += String(i) + ",";
+        if(i) content+=",";
+        content += String(i);
     }
     content += "]</b></p>";
     server.send(200, "text/html", content);
@@ -178,13 +182,13 @@ void ICACHE_FLASH_ATTR debug_info()
 
 void ICACHE_FLASH_ATTR receive_globals()
 {
-    if(server.hasArg("plain") && server.arg("plain").length() == GLOBALS_SIZE*2 && server.method() == HTTP_PUT)
+    if(server.hasArg("plain") && server.arg("plain").length() == GLOBALS_SIZE * 2 && server.method() == HTTP_PUT)
     {
         uint8_t bytes[GLOBALS_SIZE];
         auto c = server.arg("plain");
         for(uint8_t i = 0; i < sizeof(bytes); ++i)
         {
-            bytes[i] = char2int(c[i*2]) * 16 + char2int(c[i*2+1]);
+            bytes[i] = char2int(c[i * 2]) * 16 + char2int(c[i * 2 + 1]);
         }
         uint8_t previous_profile = globals.profile_order[globals.n_profile];
         uint8_t previous_auto_increment = globals.auto_increment;
@@ -219,25 +223,25 @@ void ICACHE_FLASH_ATTR redirect_to_config()
 
 void ICACHE_FLASH_ATTR receive_profile()
 {
-    if(server.hasArg("plain") && server.arg("plain").length() == (PROFILE_SIZE + 1)*2 && server.method() == HTTP_PUT)
+    if(server.hasArg("plain") && server.arg("plain").length() == (PROFILE_SIZE + 1) * 2 && server.method() == HTTP_PUT)
     {
         uint8_t bytes[PROFILE_SIZE + 1];
         auto c = server.arg("plain");
         for(uint8_t i = 0; i < sizeof(bytes); ++i)
         {
-            bytes[i] = char2int(c[i*2]) * 16 + char2int(c[i*2+1]);
+            bytes[i] = char2int(c[i * 2]) * 16 + char2int(c[i * 2 + 1]);
         }
 
         if(globals.n_profile == bytes[0])
         {
-            memcpy(&current_profile, bytes+1, PROFILE_SIZE);
+            memcpy(&current_profile, bytes + 1, PROFILE_SIZE);
             convert_to_frames(frames, current_profile.devices[0].timing);
             flags |= FLAG_PROFILE_UPDATED;
         }
         else
         {
             profile tmp; // NOLINT
-            memcpy(&tmp, bytes+1, PROFILE_SIZE);
+            memcpy(&tmp, bytes + 1, PROFILE_SIZE);
             save_profile(&tmp, bytes[0]);
         }
         server.send(204);
@@ -339,9 +343,25 @@ void ICACHE_FLASH_ATTR handle_root()
 
 void ICACHE_FLASH_ATTR restart()
 {
-    server.send(200, "text/html", "<p>Your device is restarting...</p><p><a href=\"/\">Go back to configuration panel</a></p>");
+    server.send(200, "text/html",
+                "<p>Your device is restarting...</p><p><a href=\"/\">Go back to configuration panel</a></p>");
     delay(500);
     ESP.restart();
+}
+
+void ICACHE_FLASH_ATTR send_json()
+{
+    String profile_array = "[";
+    for(uint8_t i = 0; i < globals.profile_count; ++i)
+    {
+        if(i) profile_array += ",";
+        profile_array += globals.profile_order[i];
+    }
+    profile_array += "]";
+    String content = "{\"ap_name\":\"" + String(AP_NAME) +
+                     "\",\"leds_enabled\":" + (globals.leds_enabled ? "true" : "false") +
+                     ",\"current_profile\":" + String(globals.n_profile) +"\"profiles\": "+profile_array+ "}";
+    server.send(200, "application/json", content);
 }
 
 void on_disconnected(const WiFiEventStationModeDisconnected &event)
@@ -360,6 +380,26 @@ void configModeCallback(WiFiManager *myWiFiManager)
             strip.setPixelColor(i, COLOR_CYAN);
     }
     strip.show();
+}
+
+void handleUdp()
+{
+    int packetSize = Udp.parsePacket();
+    if(packetSize)
+    {
+        uint8_t buffer[32];
+        int len = Udp.read(buffer, 32);
+        if(len > 0)
+        {
+            buffer[len] = 0;
+        }
+        if(String((char *) buffer) == UDP_DISCOVERY_MSG)
+        {
+            Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
+            Udp.write(UDP_DISCOVERY_RESPONSE);
+            Udp.endPacket();
+        }
+    }
 }
 
 void setup()
@@ -412,7 +452,9 @@ void setup()
     server.on("/profile", receive_profile);
     server.on("/profile_n", change_profile);
     server.on("/color", receive_color);
+    server.on("/api", send_json);
 
+    Udp.begin(8888);
     server.begin();
 
     eeprom_init();
@@ -422,6 +464,7 @@ void setup()
 void loop()
 {
     server.handleClient();
+    handleUdp();
 
     if(flags & FLAG_NEW_FRAME)
     {
