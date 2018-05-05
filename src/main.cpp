@@ -13,7 +13,7 @@ extern "C" {
 #include "config.h"
 #include "memory.h"
 
-Adafruit_NeoPixel strip = Adafruit_NeoPixel(LED_COUNT, 4, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 ESP8266WebServer server(80);
 WiFiUDP Udp;
 

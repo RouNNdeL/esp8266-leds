@@ -7,6 +7,8 @@
 
 #define FPS 100
 
+#define LED_PIN 4
+
 #define LED_COUNT 60
 #define AP_NAME "LED Controller"
 #define CONFIG_PAGE "http://led/"
