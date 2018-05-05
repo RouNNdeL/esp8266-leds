@@ -19,6 +19,7 @@ WiFiUDP Udp;
 
 #define FLAG_NEW_FRAME (1 << 0)
 #define FLAG_PROFILE_UPDATED (1 << 1)
+#define FLAG_MANUAL_COLOR (1 << 2)
 
 os_timer_t frameTimer;
 volatile uint32_t frame;
@@ -28,11 +29,12 @@ global_settings globals;
 #define increment_profile() globals.n_profile = (globals.n_profile+1)%globals.profile_count
 
 #define refresh_profile() load_profile(&current_profile, globals.profile_order[globals.n_profile]); \
-convert_to_frames(frames, current_profile.devices[0].timing)
+convert_to_frames(frames, current_profile.devices[0].timing); flags &= ~FLAG_MANUAL_COLOR
 
 profile current_profile;
 uint16_t frames[TIME_COUNT];
 uint32_t auto_increment;
+uint8_t manual_color[3] = {0x00, 0x00, 0x00};
 
 uint16_t time_to_frames(uint8_t time)
 {
@@ -160,7 +162,7 @@ void ICACHE_FLASH_ATTR debug_info()
     content += "<p>brightness: <b>[";
     for(uint8_t i : globals.brightness)
     {
-        if(i) content+=",";
+        if(i) content += ",";
         content += String(i);
     }
     content += "]</b></p>";
@@ -171,7 +173,7 @@ void ICACHE_FLASH_ATTR debug_info()
     content += "<p>profile_order: <b>[";
     for(uint8_t i : globals.profile_order)
     {
-        if(i) content+=",";
+        if(i) content += ",";
         content += String(i);
     }
     content += "]</b></p>";
@@ -261,9 +263,9 @@ void ICACHE_FLASH_ATTR receive_color()
     if(server.hasArg("plain") && server.arg("plain").length() == 6 && server.method() == HTTP_POST)
     {
         const String &c = server.arg("plain");
-        uint8_t r = char2int(c[0]) * 16 + char2int(c[1]);
-        uint8_t g = char2int(c[2]) * 16 + char2int(c[3]);
-        uint8_t b = char2int(c[4]) * 16 + char2int(c[5]);
+        manual_color[0] = char2int(c[0]) * 16 + char2int(c[1]);
+        manual_color[1] = char2int(c[2]) * 16 + char2int(c[3]);
+        manual_color[2] = char2int(c[4]) * 16 + char2int(c[5]);
 
         if(flags & FLAG_PROFILE_UPDATED)
         {
@@ -278,10 +280,10 @@ void ICACHE_FLASH_ATTR receive_color()
         current_profile.devices[0].timing[TIME_OFF] = 0;
         current_profile.devices[0].color_count = 1;
         current_profile.devices[0].args[ARG_BREATHE_END] = 255;
-        current_profile.devices[0].colors[0] = g;
-        current_profile.devices[0].colors[1] = r;
-        current_profile.devices[0].colors[2] = b;
+        set_color_manual(current_profile.devices[0].colors, grb(color_from_buf(manual_color)));
         convert_to_frames(frames, current_profile.devices[0].timing);
+
+        flags |= FLAG_MANUAL_COLOR;
 
         auto_increment = 0;
 
@@ -308,7 +310,7 @@ void ICACHE_FLASH_ATTR change_profile()
         refresh_profile();
 
         frame = 0;
-        auto_increment = 0;
+        auto_increment = autoincrement_to_frames(globals.auto_increment);
 
         server.send(200, "application/json", R"({"status": "success"})");
     }
@@ -324,11 +326,17 @@ void ICACHE_FLASH_ATTR change_profile()
 
 void ICACHE_FLASH_ATTR handle_root()
 {
+    String r = String(manual_color[0], 16);
+    String g = String(manual_color[1], 16);
+    String b = String(manual_color[2], 16);
+    r = r.length() == 1 ? "0" + r : r;
+    g = g.length() == 1 ? "0" + g : g;
+    b = b.length() == 1 ? "0" + b : b;
     String content = R"(<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0"><title>)" +
                      String(AP_NAME) + "</title></head><body><h2>" + AP_NAME +
                      R"(</h2><p>You can change profiles and set a static color for your LEDs, for more advanced configuration click
-<a href="/config">here</a></p> <input id="a" type="color"> <select id="b">)";
+<a href="/config">here</a></p> <input id="a" type="color" value="#)" + r + g + b + R"("> <select id="b">)";
     for(uint8_t i = 0; i < globals.profile_count; ++i)
     {
         String selected = i == globals.n_profile ? "selected" : "";
@@ -337,7 +345,10 @@ void ICACHE_FLASH_ATTR handle_root()
         content += "<option value=\"" + String(i + 1) + "\" " + selected + ">" + String(globals.profile_order[i]) +
                    "</option>";
     }
-    content += R"(</select><p><a href="/restart">Restart device</a></p> <script>document.getElementById("a").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("POST","/color",!0),t.send(e.target.value.substring(1))}),document.getElementById("b").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("POST","/profile_n",!0),t.send(new Uint8Array([e.target.value]))});</script> </body></html>)";
+    content += R"(</select><p><a href="/restart">Restart device</a></p> <script>document.getElementById("a").addEventListener
+("change",function(e){var t=new XMLHttpRequest;t.open("POST","/color",!0),t.send(e.target.value.substring(1))}),
+document.getElementById("b").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("POST","/profile_n",!0)
+,t.send(new Uint8Array([e.target.value]))});</script> </body></html>)";
     server.send(200, "text/html", content);
 }
 
@@ -360,7 +371,8 @@ void ICACHE_FLASH_ATTR send_json()
     profile_array += "]";
     String content = "{\"ap_name\":\"" + String(AP_NAME) +
                      "\",\"leds_enabled\":" + (globals.leds_enabled ? "true" : "false") +
-                     ",\"current_profile\":" + String(globals.n_profile) +"\"profiles\": "+profile_array+ "}";
+                     ",\"current_profile\":" + String(globals.n_profile) +
+                     ",\"profiles\": " + profile_array + "}";
     server.send(200, "application/json", content);
 }
 
@@ -480,7 +492,7 @@ void loop()
             frame = 0;
         }
 
-        if(globals.leds_enabled)
+        if(globals.leds_enabled || flags & FLAG_MANUAL_COLOR)
         {
             device_profile &device = current_profile.devices[0];
             digital_effect((effect) device.effect, strip.getPixels(), LED_COUNT, 0, frame, frames, device.args,
