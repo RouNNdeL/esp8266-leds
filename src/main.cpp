@@ -344,6 +344,11 @@ void ICACHE_FLASH_ATTR restart()
     ESP.restart();
 }
 
+void on_disconnected(const WiFiEventStationModeDisconnected &event)
+{
+    ESP.restart();
+}
+
 void configModeCallback(WiFiManager *myWiFiManager)
 {
     strip.begin();
@@ -397,6 +402,8 @@ void setup()
 #ifdef USER_DEBUG
     server.on("/debug", debug_info);
 #endif /* USER_DEBUG */
+
+    WiFi.onStationModeDisconnected(on_disconnected);
 
     server.on("/", handle_root);
     server.on("/restart", restart);
