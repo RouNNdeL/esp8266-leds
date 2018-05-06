@@ -5,13 +5,24 @@
 #ifndef WIFICONTROLLER_CONFIG_H
 #define WIFICONTROLLER_CONFIG_H
 
+
+#define VERSION_CODE 1
+#define VERSION_NAME "0.1"
+
 #define FPS 100
-
 #define LED_PIN 4
-
 #define LED_COUNT 60
+
 #define AP_NAME "LED Controller"
+#define DEVICE_ID 0
 #define CONFIG_PAGE "http://led/"
+
+#define HTTP_UPDATE_HOST "home.zdul.xyz"
+#define HTTP_UPDATE_HTTPS 1
+#define HTTP_UPDATE_HTTPS_FINGERPRINT "f8 0c f7 57 6c ca 1f e9 51 8f 21 7a 8f 43 0c 9c 7c 28 2c 50"
+#define HTTP_UPDATE_PORT 443
+#define HTTP_UPDATE_URL "/api/esp_update.php"
+
 #define UDP_DISCOVERY_MSG "ROUNDEL_IOT_DISCOVERY"
 #define UDP_DISCOVERY_RESPONSE "ROUNDEL_IOT_RESPONSE"
 

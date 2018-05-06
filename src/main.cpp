@@ -4,6 +4,7 @@
 #include <Adafruit_NeoPixel.h>
 #include <EEPROM.h>
 #include <WiFiUdp.h>
+#include <ESP8266httpUpdate.h>
 
 extern "C" {
 #include "user_interface.h"
@@ -332,15 +333,18 @@ void ICACHE_FLASH_ATTR handle_root()
     r = r.length() == 1 ? "0" + r : r;
     g = g.length() == 1 ? "0" + g : g;
     b = b.length() == 1 ? "0" + b : b;
-    String content = R"(<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>)" +
-                     String(AP_NAME) + "</title></head><body><h2>" + AP_NAME +
-                     R"(</h2><p>You can change profiles and set a static color for your LEDs, for more advanced configuration click<a href="/config">here</a></p> <input id="a" type="color" value="#)" + r + g + b + R"("> <select id="b">)";
+    String content =
+            R"(<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>)" +
+            String(AP_NAME) + "</title></head><body><h2>" + AP_NAME +
+            R"(</h2><p>You can change profiles and set a static color for your LEDs, for more advanced configuration click<a href="/config">here</a></p> <input id="a" type="color" value="#)" +
+            r + g + b + R"("> <select id="b">)";
     for(uint8_t i = 0; i < globals.profile_count; ++i)
     {
         String selected = i == globals.n_profile ? "selected" : "";
         /* We add 1 to avoid sending a NULL which is a String termination character in C.
          * The profile_n endpoint will then subtract that 1 to account for that*/
-        content += "<option value=\"" + String(i + 1) + "\" " + selected + ">" + String(globals.profile_order[i]) + "</option>";
+        content += "<option value=\"" + String(i + 1) + "\" " + selected + ">" + String(globals.profile_order[i]) +
+                   "</option>";
     }
     content += R"(</select><p><a href="/restart">Restart device</a></p> <script>document.getElementById("a").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("POST","/color",!0),t.send(e.target.value.substring(1))}),document.getElementById("b").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("POST","/profile_n",!0),t.send(new Uint8Array([e.target.value]))});</script> </body></html>)";
     server.send(200, "text/html", content);
@@ -402,14 +406,45 @@ void handleUdp()
         if(String((char *) buffer) == UDP_DISCOVERY_MSG)
         {
             Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
-            String resp = R"({"message":")" + String(UDP_DISCOVERY_RESPONSE)+ R"(", "name":")" +AP_NAME+"\"}";
-            Serial.println(resp+" ->"+String(resp.length()));
+            String resp = R"({"message":")" + String(UDP_DISCOVERY_RESPONSE) + R"(", "name":")" + AP_NAME + "\"}";
             char bytes[resp.length()];
-            resp.toCharArray(bytes, resp.length()+1);
+            resp.toCharArray(bytes, resp.length() + 1);
             Udp.write(bytes, resp.length());
             Udp.endPacket();
         }
     }
+}
+
+HTTPUpdateResult checkUpdate(bool reboot)
+{
+    Serial.println("update] Checking for updates...");
+#if HTTP_UPDATE_HTTPS
+    HTTPUpdateResult ret = ESPhttpUpdate.update(HTTP_UPDATE_HOST, HTTP_UPDATE_PORT,
+                                                String(HTTP_UPDATE_URL) + "?device_id=" + DEVICE_ID,
+                                                String(VERSION_CODE), HTTP_UPDATE_HTTPS_FINGERPRINT);
+#else
+    HTTPUpdateResult ret = ESPhttpUpdate.update(HTTP_UPDATE_HOST, HTTP_UPDATE_PORT,
+                                                String(HTTP_UPDATE_URL) + "?device_id=" + DEVICE_ID,
+                                                String(VERSION_CODE));
+#endif
+    switch(ret)
+    {
+        case HTTP_UPDATE_FAILED:
+            Serial.println("[OTA] Update failed.");
+            break;
+        case HTTP_UPDATE_NO_UPDATES:
+            Serial.println("[OTA] No update.");
+            break;
+        case HTTP_UPDATE_OK:
+            Serial.println("[OTA] Update successful."); // may not called we reboot the ESP
+            if(reboot)
+            {
+                delay(100);
+                ESP.restart();
+            }
+            break;
+    }
+    return ret;
 }
 
 void setup()
@@ -422,6 +457,10 @@ void setup()
     Serial.println("|------ Begin Startup ------|");
     Serial.println("| LED Controller by RouNdeL |");
     Serial.println("|---------------------------|");
+
+    Serial.println("Version Name: "+String(VERSION_NAME));
+    Serial.println("Version Code: "+String(VERSION_CODE));
+    Serial.println("Device Id: "+String(DEVICE_ID));
 #endif /* USER_DEBUG */
 
     strip.begin();
@@ -442,6 +481,8 @@ void setup()
     manager.setAPStaticIPConfig(IPAddress(192, 168, 1, 1), IPAddress(192, 168, 1, 1), IPAddress(255, 255, 255, 0));
     manager.setConfigPortalTimeout(300);
     manager.autoConnect(AP_NAME);
+
+    checkUpdate(true);
 
 #ifdef USER_DEBUG
     Serial.println("|---------------------------|");
