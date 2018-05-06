@@ -152,9 +152,30 @@ uint8_t char2int(char input)
     return 0;
 }
 
-HTTPUpdateResult checkUpdate(uint8_t reboot)
+int checkUpdate()
 {
-    Serial.println("OTA] Checking for updates...");
+    HTTPClient http;
+    http.begin(HTTP_UPDATE_HOST, HTTP_UPDATE_PORT, String(HTTP_UPDATE_URL) + "?device_id=" + DEVICE_ID,
+               HTTP_UPDATE_HTTPS_FINGERPRINT);
+    http.useHTTP10(true);
+    http.setTimeout(8000);
+    http.setUserAgent(F("ESP8266-http-Update"));
+    http.addHeader(F("x-ESP8266-STA-MAC"), WiFi.macAddress());
+    http.addHeader(F("x-ESP8266-AP-MAC"), WiFi.softAPmacAddress());
+    http.addHeader(F("x-ESP8266-free-space"), String(ESP.getFreeSketchSpace()));
+    http.addHeader(F("x-ESP8266-sketch-size"), String(ESP.getSketchSize()));
+    http.addHeader(F("x-ESP8266-sketch-md5"), String(ESP.getSketchMD5()));
+    http.addHeader(F("x-ESP8266-chip-size"), String(ESP.getFlashChipRealSize()));
+    http.addHeader(F("x-ESP8266-sdk-version"), ESP.getSdkVersion());
+    http.addHeader(F("x-ESP8266-mode"), F("check"));
+    http.addHeader(F("x-ESP8266-version"), String(VERSION_CODE));
+
+    return http.GET();
+}
+
+HTTPUpdateResult update(uint8_t reboot)
+{
+    Serial.println("[OTA] Checking for updates...");
     ESPhttpUpdate.rebootOnUpdate(false);
 #if HTTP_UPDATE_HTTPS
     HTTPUpdateResult ret = ESPhttpUpdate.update(HTTP_UPDATE_HOST, HTTP_UPDATE_PORT,
@@ -168,16 +189,17 @@ HTTPUpdateResult checkUpdate(uint8_t reboot)
     switch(ret)
     {
         case HTTP_UPDATE_FAILED:
-            Serial.println("[OTA] Update failed.");
+            Serial.println("[OTA] Update failed");
             break;
         case HTTP_UPDATE_NO_UPDATES:
-            Serial.println("[OTA] No update.");
+            Serial.println("[OTA] No update");
             break;
         case HTTP_UPDATE_OK:
-            Serial.println("[OTA] Update successful."); // may not called we reboot the ESP
+            Serial.println("[OTA] Update successful"); // may not called we reboot the ESP
             if(reboot)
             {
-                delay(100);
+                Serial.println("[OTA] Rebooting...");
+                delay(250);
                 ESP.restart();
             }
             break;
@@ -193,6 +215,7 @@ void ICACHE_FLASH_ATTR debug_info()
     content += "<p>config_url: <a href=\"" + String(CONFIG_PAGE) + "\">" + CONFIG_PAGE + "</a></p>";
     content += "<p>version_code: <b>" + String(VERSION_CODE) + "</b></p>";
     content += "<p>version_name: <b>" + String(VERSION_NAME) + "</b></p>";
+    content += "<p>build_date: <b>" + BUILD_DATE + "</b></p>";
     content += "<p>device_id: <b>" + String(DEVICE_ID) + "</b></p>";
     content += "<p>leds_enabled: <b>" + String(globals.leds_enabled) + "</b></p>";
     content += "<p>brightness: <b>[";
@@ -411,21 +434,28 @@ void ICACHE_FLASH_ATTR send_json()
 
 void ICACHE_FLASH_ATTR manual_update_check()
 {
-    auto status = checkUpdate(0);
+    auto code = checkUpdate();
     String statusString;
-    switch(status)
+    switch(code)
     {
-        case HTTP_UPDATE_OK:
-            statusString = "Update successful, click <a href=\"/restart\">here</a> to restart and apply the update";
+        case HTTP_CODE_OK:
+            statusString = "Update found, click <a href=\"/apply_update\">here</a> to download and apply the update";
             break;
-        case HTTP_UPDATE_NO_UPDATES:
+        case HTTP_CODE_NOT_MODIFIED:
             statusString = "No updates found, <a href=\"/\">return to the main page<a/>";
             break;
-        case HTTP_UPDATE_FAILED:
-            statusString = "Update check failed: "+ESPhttpUpdate.getLastErrorString();
+        default:
+            statusString = "Update check failed: HTTP " + code;
             break;
     }
     server.send(200, "text/html", statusString);
+}
+
+void ICACHE_FLASH_ATTR apply_update()
+{
+    server.send(200, "text/html", "<p>The device will now download the update and restart to apply the changes</p><p><a href=\"/\">Main page</a></p>");
+    delay(500);
+    update(1);
 }
 
 void on_disconnected(const WiFiEventStationModeDisconnected &event)
@@ -480,9 +510,10 @@ void setup()
     Serial.println("| LED Controller by RouNdeL |");
     Serial.println("|---------------------------|");
 
-    Serial.println("Version Name: "+String(VERSION_NAME));
-    Serial.println("Version Code: "+String(VERSION_CODE));
-    Serial.println("Device Id: "+String(DEVICE_ID));
+    Serial.println("Version Name: " + String(VERSION_NAME));
+    Serial.println("Version Code: " + String(VERSION_CODE));
+    Serial.println("Build Date: " + BUILD_DATE);
+    Serial.println("Device Id: " + String(DEVICE_ID));
 #endif /* USER_DEBUG */
 
     strip.begin();
@@ -504,7 +535,7 @@ void setup()
     manager.setConfigPortalTimeout(300);
     manager.autoConnect(AP_NAME);
 
-    checkUpdate(1);
+    update(1);
 
 #ifdef USER_DEBUG
     Serial.println("|---------------------------|");
@@ -527,6 +558,7 @@ void setup()
     server.on("/color", receive_color);
     server.on("/api", send_json);
     server.on("/update", manual_update_check);
+    server.on("/apply_update", apply_update);
 
     Udp.begin(8888);
     server.begin();
