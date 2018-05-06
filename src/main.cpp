@@ -152,6 +152,38 @@ uint8_t char2int(char input)
     return 0;
 }
 
+HTTPUpdateResult checkUpdate(uint8_t reboot)
+{
+    Serial.println("OTA] Checking for updates...");
+    ESPhttpUpdate.rebootOnUpdate(false);
+#if HTTP_UPDATE_HTTPS
+    HTTPUpdateResult ret = ESPhttpUpdate.update(HTTP_UPDATE_HOST, HTTP_UPDATE_PORT,
+                                                String(HTTP_UPDATE_URL) + "?device_id=" + DEVICE_ID,
+                                                String(VERSION_CODE), HTTP_UPDATE_HTTPS_FINGERPRINT);
+#else
+    HTTPUpdateResult ret = ESPhttpUpdate.update(HTTP_UPDATE_HOST, HTTP_UPDATE_PORT,
+                                                String(HTTP_UPDATE_URL) + "?device_id=" + DEVICE_ID,
+                                                String(VERSION_CODE));
+#endif
+    switch(ret)
+    {
+        case HTTP_UPDATE_FAILED:
+            Serial.println("[OTA] Update failed.");
+            break;
+        case HTTP_UPDATE_NO_UPDATES:
+            Serial.println("[OTA] No update.");
+            break;
+        case HTTP_UPDATE_OK:
+            Serial.println("[OTA] Update successful."); // may not called we reboot the ESP
+            if(reboot)
+            {
+                delay(100);
+                ESP.restart();
+            }
+            break;
+    }
+    return ret;
+}
 
 #ifdef USER_DEBUG
 
@@ -159,12 +191,15 @@ void ICACHE_FLASH_ATTR debug_info()
 {
     String content = "<h2>" + String(AP_NAME) + "</h2>";
     content += "<p>config_url: <a href=\"" + String(CONFIG_PAGE) + "\">" + CONFIG_PAGE + "</a></p>";
+    content += "<p>version_code: <b>" + String(VERSION_CODE) + "</b></p>";
+    content += "<p>version_name: <b>" + String(VERSION_NAME) + "</b></p>";
+    content += "<p>device_id: <b>" + String(DEVICE_ID) + "</b></p>";
     content += "<p>leds_enabled: <b>" + String(globals.leds_enabled) + "</b></p>";
     content += "<p>brightness: <b>[";
-    for(uint8_t i : globals.brightness)
+    for(uint8_t i = 0; i < DEVICE_COUNT; i++)
     {
         if(i) content += ",";
-        content += String(i);
+        content += String(globals.brightness[i]);
     }
     content += "]</b></p>";
     content += "<p>profile_count: <b>" + String(globals.profile_count) + "</b></p>";
@@ -172,10 +207,10 @@ void ICACHE_FLASH_ATTR debug_info()
     content += "<p>auto_increment frames: <b>" + String(auto_increment) + "</b></p>";
     content += "<p>current_profile: <b>" + String(globals.n_profile) + "</b></p>";
     content += "<p>profile_order: <b>[";
-    for(uint8_t i : globals.profile_order)
+    for(uint8_t i = 0; i < PROFILE_COUNT; i++)
     {
         if(i) content += ",";
-        content += String(i);
+        content += String(globals.profile_order[i]);
     }
     content += "]</b></p>";
     server.send(200, "text/html", content);
@@ -336,7 +371,7 @@ void ICACHE_FLASH_ATTR handle_root()
     String content =
             R"(<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>)" +
             String(AP_NAME) + "</title></head><body><h2>" + AP_NAME +
-            R"(</h2><p>You can change profiles and set a static color for your LEDs, for more advanced configuration click<a href="/config">here</a></p> <input id="a" type="color" value="#)" +
+            R"(</h2><p>You can change profiles and set a static color for your LEDs, for more advanced configuration click <a href="/config">here</a></p> <input id="a" type="color" value="#)" +
             r + g + b + R"("> <select id="b">)";
     for(uint8_t i = 0; i < globals.profile_count; ++i)
     {
@@ -346,7 +381,7 @@ void ICACHE_FLASH_ATTR handle_root()
         content += "<option value=\"" + String(i + 1) + "\" " + selected + ">" + String(globals.profile_order[i]) +
                    "</option>";
     }
-    content += R"(</select><p><a href="/restart">Restart device</a></p> <script>document.getElementById("a").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("POST","/color",!0),t.send(e.target.value.substring(1))}),document.getElementById("b").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("POST","/profile_n",!0),t.send(new Uint8Array([e.target.value]))});</script> </body></html>)";
+    content += R"(</select><p><a href="/restart">Restart device</a></p><p><a href="/update">Check for updates</a></p> <script>document.getElementById("a").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("POST","/color",!0),t.send(e.target.value.substring(1))}),document.getElementById("b").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("POST","/profile_n",!0),t.send(new Uint8Array([e.target.value]))});</script> </body></html>)";
     server.send(200, "text/html", content);
 }
 
@@ -372,6 +407,25 @@ void ICACHE_FLASH_ATTR send_json()
                      ",\"current_profile\":" + String(globals.n_profile) +
                      ",\"profiles\": " + profile_array + "}";
     server.send(200, "application/json", content);
+}
+
+void ICACHE_FLASH_ATTR manual_update_check()
+{
+    auto status = checkUpdate(0);
+    String statusString;
+    switch(status)
+    {
+        case HTTP_UPDATE_OK:
+            statusString = "Update successful, click <a href=\"/restart\">here</a> to restart and apply the update";
+            break;
+        case HTTP_UPDATE_NO_UPDATES:
+            statusString = "No updates found, <a href=\"/\">return to the main page<a/>";
+            break;
+        case HTTP_UPDATE_FAILED:
+            statusString = "Update check failed: "+ESPhttpUpdate.getLastErrorString();
+            break;
+    }
+    server.send(200, "text/html", statusString);
 }
 
 void on_disconnected(const WiFiEventStationModeDisconnected &event)
@@ -415,38 +469,6 @@ void handleUdp()
     }
 }
 
-HTTPUpdateResult checkUpdate(bool reboot)
-{
-    Serial.println("update] Checking for updates...");
-#if HTTP_UPDATE_HTTPS
-    HTTPUpdateResult ret = ESPhttpUpdate.update(HTTP_UPDATE_HOST, HTTP_UPDATE_PORT,
-                                                String(HTTP_UPDATE_URL) + "?device_id=" + DEVICE_ID,
-                                                String(VERSION_CODE), HTTP_UPDATE_HTTPS_FINGERPRINT);
-#else
-    HTTPUpdateResult ret = ESPhttpUpdate.update(HTTP_UPDATE_HOST, HTTP_UPDATE_PORT,
-                                                String(HTTP_UPDATE_URL) + "?device_id=" + DEVICE_ID,
-                                                String(VERSION_CODE));
-#endif
-    switch(ret)
-    {
-        case HTTP_UPDATE_FAILED:
-            Serial.println("[OTA] Update failed.");
-            break;
-        case HTTP_UPDATE_NO_UPDATES:
-            Serial.println("[OTA] No update.");
-            break;
-        case HTTP_UPDATE_OK:
-            Serial.println("[OTA] Update successful."); // may not called we reboot the ESP
-            if(reboot)
-            {
-                delay(100);
-                ESP.restart();
-            }
-            break;
-    }
-    return ret;
-}
-
 void setup()
 {
 #ifdef USER_DEBUG
@@ -482,7 +504,7 @@ void setup()
     manager.setConfigPortalTimeout(300);
     manager.autoConnect(AP_NAME);
 
-    checkUpdate(true);
+    checkUpdate(1);
 
 #ifdef USER_DEBUG
     Serial.println("|---------------------------|");
@@ -504,6 +526,7 @@ void setup()
     server.on("/profile_n", change_profile);
     server.on("/color", receive_color);
     server.on("/api", send_json);
+    server.on("/update", manual_update_check);
 
     Udp.begin(8888);
     server.begin();
