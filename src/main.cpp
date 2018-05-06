@@ -152,6 +152,18 @@ uint8_t char2int(char input)
     return 0;
 }
 
+void setStripStatus(uint8_t r, uint8_t g, uint8_t b)
+{
+    for(led_count_t i = 0; i < LED_COUNT; ++i)
+    {
+        if(i % 4)
+            strip.setPixelColor(i, color_brightness(12, r, g, b));
+        else
+            strip.setPixelColor(i, r, g, b);
+    }
+    strip.show();
+}
+
 int checkUpdate()
 {
     HTTPClient http;
@@ -177,6 +189,7 @@ int checkUpdate()
 
 HTTPUpdateResult update(uint8_t reboot)
 {
+    setStripStatus(COLOR_MAGENTA);
     Serial.println("[OTA] Checking for updates...");
     ESPhttpUpdate.rebootOnUpdate(false);
 #if HTTP_UPDATE_HTTPS
@@ -192,12 +205,21 @@ HTTPUpdateResult update(uint8_t reboot)
     {
         case HTTP_UPDATE_FAILED:
             Serial.println("[OTA] Update failed");
+            setStripStatus(COLOR_RED);
+            yield();
+            delay(1000);
             break;
         case HTTP_UPDATE_NO_UPDATES:
             Serial.println("[OTA] No update");
+            setStripStatus(rgb(244, 165, 0));
+            yield();
+            delay(1000);
             break;
         case HTTP_UPDATE_OK:
             Serial.println("[OTA] Update successful"); // may not called we reboot the ESP
+            setStripStatus(COLOR_GREEN);
+            yield();
+            delay(1000);
             if(reboot)
             {
                 Serial.println("[OTA] Rebooting...");
@@ -456,7 +478,8 @@ void ICACHE_FLASH_ATTR manual_update_check()
 
 void ICACHE_FLASH_ATTR apply_update()
 {
-    server.send(200, "text/html", "<p>The device will now download the update and restart to apply the changes</p><p><a href=\"/\">Main page</a></p>");
+    server.send(200, "text/html",
+                "<p>The device will now download the update and restart to apply the changes</p><p><a href=\"/\">Main page</a></p>");
     delay(500);
     update(1);
 }
@@ -468,15 +491,7 @@ void on_disconnected(const WiFiEventStationModeDisconnected &event)
 
 void configModeCallback(WiFiManager *myWiFiManager)
 {
-    strip.begin();
-    for(led_count_t i = 0; i < LED_COUNT; ++i)
-    {
-        if(i % 4)
-            strip.setPixelColor(i, color_brightness(16, COLOR_CYAN));
-        else
-            strip.setPixelColor(i, COLOR_CYAN);
-    }
-    strip.show();
+    setStripStatus(COLOR_CYAN);
 }
 
 void handleUdp()
@@ -520,14 +535,7 @@ void setup()
 #endif /* USER_DEBUG */
 
     strip.begin();
-    for(led_count_t i = 0; i < LED_COUNT; ++i)
-    {
-        if(i % 4)
-            strip.setPixelColor(i, color_brightness(8, COLOR_RED));
-        else
-            strip.setPixelColor(i, color_brightness(128, COLOR_RED));
-    }
-    strip.show();
+    setStripStatus(COLOR_RED);
 
     WiFiManager manager;
 #ifndef USER_DEBUG
