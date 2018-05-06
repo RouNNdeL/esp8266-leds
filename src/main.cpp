@@ -170,7 +170,9 @@ int checkUpdate()
     http.addHeader(F("x-ESP8266-mode"), F("check"));
     http.addHeader(F("x-ESP8266-version"), String(VERSION_CODE));
 
-    return http.GET();
+    int code = http.GET();
+    http.end();
+    return code;
 }
 
 HTTPUpdateResult update(uint8_t reboot)
@@ -216,6 +218,7 @@ void ICACHE_FLASH_ATTR debug_info()
     content += "<p>version_code: <b>" + String(VERSION_CODE) + "</b></p>";
     content += "<p>version_name: <b>" + String(VERSION_NAME) + "</b></p>";
     content += "<p>build_date: <b>" + BUILD_DATE + "</b></p>";
+    content += "<p>reset_info: <b>" + ESP.getResetReason() + "</b></p>";
     content += "<p>device_id: <b>" + String(DEVICE_ID) + "</b></p>";
     content += "<p>leds_enabled: <b>" + String(globals.leds_enabled) + "</b></p>";
     content += "<p>brightness: <b>[";
