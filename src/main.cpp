@@ -115,6 +115,7 @@ void convert_bufs()
     for(uint8_t i = 0; i < LED_COUNT; ++i)
     {
         uint8_t index = i * 3;
+        set_color_manual(p+index, color_brightness(globals.brightness[0], color_from_buf(p+index)));
         p[index] = actual_brightness(p[index]);
         p[index + 1] = actual_brightness(p[index + 1]);
         p[index + 2] = actual_brightness(p[index + 2]);
@@ -154,6 +155,7 @@ uint8_t char2int(char input)
 
 void setStripStatus(uint8_t r, uint8_t g, uint8_t b)
 {
+    strip.setBrightness(UINT8_MAX);
     for(led_count_t i = 0; i < LED_COUNT; ++i)
     {
         if(i % 4)
