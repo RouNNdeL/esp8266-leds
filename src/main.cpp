@@ -192,7 +192,9 @@ int checkUpdate()
 HTTPUpdateResult update(uint8_t reboot)
 {
     setStripStatus(COLOR_MAGENTA);
+#if SERIAL_DEBUG
     Serial.println("[OTA] Checking for updates...");
+#endif /* SERIAL_DEBUG */
     ESPhttpUpdate.rebootOnUpdate(false);
 #if HTTP_UPDATE_HTTPS
     HTTPUpdateResult ret = ESPhttpUpdate.update(HTTP_UPDATE_HOST, HTTP_UPDATE_PORT,
@@ -202,29 +204,37 @@ HTTPUpdateResult update(uint8_t reboot)
     HTTPUpdateResult ret = ESPhttpUpdate.update(HTTP_UPDATE_HOST, HTTP_UPDATE_PORT,
                                                 String(HTTP_UPDATE_URL) + "?device_id=" + DEVICE_ID,
                                                 String(VERSION_CODE));
-#endif
+#endif /* HTTP_UPDATE_HTTPS */
     switch(ret)
     {
         case HTTP_UPDATE_FAILED:
+#if SERIAL_DEBUG
             Serial.println("[OTA] Update failed");
+#endif /* SERIAL_DEBUG */
             setStripStatus(COLOR_RED);
             yield();
             delay(1000);
             break;
         case HTTP_UPDATE_NO_UPDATES:
+#if SERIAL_DEBUG
             Serial.println("[OTA] No update");
+#endif
             setStripStatus(rgb(244, 165, 0));
             yield();
             delay(1000);
             break;
         case HTTP_UPDATE_OK:
+#if SERIAL_DEBUG
             Serial.println("[OTA] Update successful"); // may not called we reboot the ESP
+#endif /* SERIAL_DEBUG */
             setStripStatus(COLOR_GREEN);
             yield();
             delay(1000);
             if(reboot)
             {
+#if SERIAL_DEBUG
                 Serial.println("[OTA] Rebooting...");
+#endif /* SERIAL_DEBUG */
                 delay(250);
                 ESP.restart();
             }
@@ -233,7 +243,7 @@ HTTPUpdateResult update(uint8_t reboot)
     return ret;
 }
 
-#ifdef USER_DEBUG
+#if PAGE_DEBUG
 
 void ICACHE_FLASH_ATTR debug_info()
 {
@@ -266,7 +276,7 @@ void ICACHE_FLASH_ATTR debug_info()
     server.send(200, "text/html", content);
 }
 
-#endif
+#endif /* PAGE_DEBUG */
 
 void ICACHE_FLASH_ATTR receive_globals()
 {
@@ -295,11 +305,11 @@ void ICACHE_FLASH_ATTR receive_globals()
     }
     else
     {
-#ifdef USER_DEBUG
+#if SERIAL_DEBUG
         server.send(400, "text/html", "<h2>HTTP 400 Invalid Request</h2>");
 #else
         server.send(400);
-#endif /* USER_DEBUG */
+#endif /* SERIAL_DEBUG */
     }
 }
 
@@ -336,11 +346,11 @@ void ICACHE_FLASH_ATTR receive_profile()
     }
     else
     {
-#ifdef USER_DEBUG
+#if SERIAL_DEBUG
         server.send(400, "text/html", "<h2>HTTP 400 Invalid Request</h2>");
 #else
         server.send(400);
-#endif /* USER_DEBUG */
+#endif /* SERIAL_DEBUG */
     }
 }
 
@@ -402,11 +412,11 @@ void ICACHE_FLASH_ATTR change_profile()
     }
     else
     {
-#ifdef USER_DEBUG
+#if SERIAL_DEBUG
         server.send(400, "text/html", "<h2>HTTP 400 Invalid Request</h2>");
 #else
         server.send(400);
-#endif /* USER_DEBUG */
+#endif /* SERIAL_DEBUG */
     }
 }
 
@@ -465,7 +475,7 @@ void ICACHE_FLASH_ATTR manual_update_check()
     String statusString;
     switch(code)
     {
-        case HTTP_CODE_OK:
+        case HTTP_CODE_NO_CONTENT:
             statusString = "Update found, click <a href=\"/apply_update\">here</a> to download and apply the update";
             break;
         case HTTP_CODE_NOT_MODIFIED:
@@ -521,7 +531,7 @@ void handleUdp()
 
 void setup()
 {
-#ifdef USER_DEBUG
+#if SERIAL_DEBUG
     Serial.begin(115200);
 
     Serial.println("");
@@ -534,15 +544,15 @@ void setup()
     Serial.println("Version Code: " + String(VERSION_CODE));
     Serial.println("Build Date: " + BUILD_DATE);
     Serial.println("Device Id: " + String(DEVICE_ID));
-#endif /* USER_DEBUG */
+#endif /* SERIAL_DEBUG */
 
     strip.begin();
     setStripStatus(COLOR_RED);
 
     WiFiManager manager;
-#ifndef USER_DEBUG
+#ifndef SERIAL_DEBUG
     manager.setDebugOutput(0);
-#endif
+#endif /* SERIAL_DEBUG */
     manager.setAPCallback(configModeCallback);
     manager.setAPStaticIPConfig(IPAddress(192, 168, 1, 1), IPAddress(192, 168, 1, 1), IPAddress(255, 255, 255, 0));
     manager.setConfigPortalTimeout(300);
@@ -550,15 +560,15 @@ void setup()
 
     update(1);
 
-#ifdef USER_DEBUG
+#if SERIAL_DEBUG
     Serial.println("|---------------------------|");
     Serial.println("|------- Start LEDs --------|");
     Serial.println("|---------------------------|");
-#endif /* USER_DEBUG */
+#endif /* SERIAL_DEBUG */
 
-#ifdef USER_DEBUG
+#if PAGE_DEBUG
     server.on("/debug", debug_info);
-#endif /* USER_DEBUG */
+#endif /* PAGE_DEBUG */
 
     WiFi.onStationModeDisconnected(on_disconnected);
 
