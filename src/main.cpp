@@ -115,7 +115,7 @@ void convert_bufs()
     for(uint8_t i = 0; i < LED_COUNT; ++i)
     {
         uint8_t index = i * 3;
-        set_color_manual(p+index, color_brightness(globals.brightness[0], color_from_buf(p+index)));
+        set_color_manual(p + index, color_brightness(globals.brightness[0], color_from_buf(p + index)));
         p[index] = actual_brightness(p[index]);
         p[index + 1] = actual_brightness(p[index + 1]);
         p[index + 2] = actual_brightness(p[index + 2]);
@@ -529,6 +529,41 @@ void handleUdp()
     }
 }
 
+void recover()
+{
+    EEPROM.begin(SPI_FLASH_SEC_SIZE);
+
+    for(uint8_t i = 0; i < DEVICE_COUNT; ++i)
+    {
+        globals.brightness[i] = 0xff;
+    }
+    globals.auto_increment = 0;
+    globals.profile_order[0] = 0;
+    globals.profile_count = 1;
+    globals.leds_enabled = 1;
+    globals.n_profile = 0;
+
+    current_profile.devices[0].effect = PIECES;
+    current_profile.devices[0].color_count = 2;
+    current_profile.devices[0].color_cycles = 1;
+    current_profile.devices[0].timing[TIME_OFF] = 0;
+    current_profile.devices[0].timing[TIME_FADEIN] = 0;
+    current_profile.devices[0].timing[TIME_ON] = 60;
+    current_profile.devices[0].timing[TIME_FADEOUT] = 30;
+    current_profile.devices[0].timing[TIME_ROTATION] = 90;
+    current_profile.devices[0].timing[TIME_DELAY] = 0;
+    current_profile.devices[0].args[ARG_BIT_PACK] = DIRECTION | SMOOTH;
+    current_profile.devices[0].args[ARG_PIECES_PIECE_COUNT] = 6;
+    current_profile.devices[0].args[ARG_PIECES_COLOR_COUNT] = 2;
+    set_color_manual(current_profile.devices[0].colors, grb(COLOR_RED));
+    set_color_manual(current_profile.devices[0].colors+3, grb(COLOR_BLUE));
+
+    convert_to_frames(frames, current_profile.devices[0].timing);
+
+    save_globals(&globals);
+    save_profile(&current_profile, 0);
+}
+
 void setup()
 {
 #if SERIAL_DEBUG
@@ -586,7 +621,12 @@ void setup()
     Udp.begin(8888);
     server.begin();
 
+#if RECOVER
+    recover();
+#else
     eeprom_init();
+#endif /* RECOVER */
+
     user_init();
 }
 

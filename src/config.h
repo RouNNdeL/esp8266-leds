@@ -14,7 +14,7 @@
 #define LED_PIN 4
 #define LED_COUNT 60
 
-#define AP_NAME "LED Controller"
+#define AP_NAME "Krzysiek's LEDs"
 #define DEVICE_ID 0
 #define CONFIG_PAGE "http://led/"
 
@@ -39,5 +39,6 @@
 #define SERIAL_DEBUG 0
 #define PAGE_DEBUG 1
 #define DEBUG 0
+#define RECOVER 0
 
 #endif //WIFICONTROLLER_CONFIG_H
