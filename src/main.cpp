@@ -291,7 +291,7 @@ void ICACHE_FLASH_ATTR receive_globals()
         uint8_t previous_profile = globals.profile_order[globals.n_profile];
         uint8_t previous_auto_increment = globals.auto_increment;
         memcpy(&globals, bytes, GLOBALS_SIZE);
-        if(previous_profile != globals.profile_order[globals.n_profile])
+        if(previous_profile != globals.profile_order[globals.n_profile] || flags & FLAG_MANUAL_COLOR)
         {
             frame = 0;
             refresh_profile();
@@ -462,9 +462,13 @@ void ICACHE_FLASH_ATTR send_json()
         profile_array += globals.profile_order[i];
     }
     profile_array += "]";
-    String content = "{\"ap_name\":\"" + String(AP_NAME) +
-                     "\",\"leds_enabled\":" + (globals.leds_enabled ? "true" : "false") +
+    String content = R"({"ap_name":")" + String(AP_NAME) +
+                     R"(","version_code":)" + String(VERSION_CODE) +
+                     R"(,"version_name":")" + String(VERSION_NAME) +
+                     R"(","device_id":)" + String(DEVICE_ID) +
+                     ",\"leds_enabled\":" + (globals.leds_enabled ? "true" : "false") +
                      ",\"current_profile\":" + String(globals.n_profile) +
+                     ",\"flags\":" + String(flags) +
                      ",\"profiles\": " + profile_array + "}";
     server.send(200, "application/json", content);
 }
@@ -556,7 +560,7 @@ void recover()
     current_profile.devices[0].args[ARG_PIECES_PIECE_COUNT] = 6;
     current_profile.devices[0].args[ARG_PIECES_COLOR_COUNT] = 2;
     set_color_manual(current_profile.devices[0].colors, grb(COLOR_RED));
-    set_color_manual(current_profile.devices[0].colors+3, grb(COLOR_BLUE));
+    set_color_manual(current_profile.devices[0].colors + 3, grb(COLOR_BLUE));
 
     convert_to_frames(frames, current_profile.devices[0].timing);
 
@@ -585,7 +589,7 @@ void setup()
     setStripStatus(COLOR_RED);
 
     WiFiManager manager;
-#ifndef SERIAL_DEBUG
+#if !SERIAL_DEBUG
     manager.setDebugOutput(0);
 #endif /* SERIAL_DEBUG */
     manager.setAPCallback(configModeCallback);
