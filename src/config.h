@@ -6,7 +6,7 @@
 #define WIFICONTROLLER_CONFIG_H
 
 
-#define VERSION_CODE 6
+#define VERSION_CODE 7
 #define VERSION_NAME "0.2"
 #define BUILD_DATE (String(__TIME__)+"@" + __DATE__)
 
