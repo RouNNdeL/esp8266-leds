@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 
+cd /home/pi/Programs/WiFiController
 git pull
 platformio run
 VERSION_CODE=$(cat src/config.h | sed -nr 's/#define VERSION_CODE ([0-9]+)/\1/p')
