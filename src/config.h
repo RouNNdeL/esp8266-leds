@@ -11,12 +11,27 @@
 #define BUILD_DATE (String(__TIME__)+"@" + __DATE__)
 
 #define FPS 100
-#define LED_PIN 4
-#define LED_COUNT 60
 
-#define AP_NAME "Krzysiek's LEDs"
+#ifndef LED_PIN
+#define LED_PIN 4
+#endif /* LED_PIN */
+
+#ifndef LED_COUNT
+#define LED_COUNT 60
+#endif /* LED_COUNT */
+
+
+#ifndef AP_NAME
+#define AP_NAME "LED Controller"
+#endif /* AP_NAME */
+
+#ifndef DEVICE_ID
 #define DEVICE_ID 0
+#endif /* DEVICE_ID */
+
+#ifndef CONFIG_PAGE
 #define CONFIG_PAGE "http://led/"
+#endif /* CONFIG_PAGE */
 
 #define HTTP_UPDATE_HOST "home.zdul.xyz"
 #define HTTP_UPDATE_HTTPS 1
