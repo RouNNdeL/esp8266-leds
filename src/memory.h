@@ -26,7 +26,7 @@ typedef struct
     uint8_t brightness[DEVICE_COUNT];
     uint8_t profile_count;
     uint8_t n_profile;
-    uint8_t leds_enabled;
+    uint8_t flags;
     uint8_t auto_increment;
     uint8_t profile_order[PROFILE_COUNT];
 } __attribute__((packed)) global_settings;
@@ -38,6 +38,9 @@ void load_profile(profile *p, uint8_t n);
 void save_globals(global_settings *globals);
 
 void save_profile(profile *p, uint8_t n);
+
+#define GLOBALS_FLAG_ENABLED (1 << 0)
+#define GLOBALS_FLAG_STATUSES (1 << 1)
 
 #define GLOBALS_SIZE sizeof(global_settings)
 #define DEVICE_SIZE sizeof(device_profile)

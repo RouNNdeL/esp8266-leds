@@ -155,6 +155,8 @@ uint8_t char2int(char input)
 
 void setStripStatus(uint8_t r, uint8_t g, uint8_t b)
 {
+    if(!(globals.flags & GLOBALS_FLAG_STATUSES))
+        return;
     strip.setBrightness(UINT8_MAX);
     for(led_count_t i = 0; i < LED_COUNT; ++i)
     {
@@ -254,7 +256,8 @@ void ICACHE_FLASH_ATTR debug_info()
     content += "<p>build_date: <b>" + BUILD_DATE + "</b></p>";
     content += "<p>reset_info: <b>" + ESP.getResetReason() + "</b></p>";
     content += "<p>device_id: <b>" + String(DEVICE_ID) + "</b></p>";
-    content += "<p>leds_enabled: <b>" + String(globals.leds_enabled) + "</b></p>";
+    content += "<p>leds_enabled: <b>" + String(globals.flags & GLOBALS_FLAG_STATUSES) + "</b></p>";
+    content += "<p>statuses: <b>" + String(globals.flags & GLOBALS_FLAG_ENABLED) + "</b></p>";
     content += "<p>brightness: <b>[";
     for(uint8_t i = 0; i < DEVICE_COUNT; i++)
     {
@@ -466,7 +469,7 @@ void ICACHE_FLASH_ATTR send_json()
                      R"(","version_code":)" + String(VERSION_CODE) +
                      R"(,"version_name":")" + String(VERSION_NAME) +
                      R"(","device_id":)" + String(DEVICE_ID) +
-                     ",\"leds_enabled\":" + (globals.leds_enabled ? "true" : "false") +
+                     ",\"leds_enabled\":" + (globals.flags & GLOBALS_FLAG_ENABLED ? "true" : "false") +
                      ",\"current_profile\":" + String(globals.n_profile) +
                      ",\"flags\":" + String(flags) +
                      ",\"profiles\": " + profile_array + "}";
@@ -544,7 +547,7 @@ void recover()
     globals.auto_increment = 0;
     globals.profile_order[0] = 0;
     globals.profile_count = 1;
-    globals.leds_enabled = 1;
+    globals.flags = GLOBALS_FLAG_ENABLED | GLOBALS_FLAG_STATUSES;
     globals.n_profile = 0;
 
     current_profile.devices[0].effect = PIECES;
@@ -584,6 +587,12 @@ void setup()
     Serial.println("Build Date: " + BUILD_DATE);
     Serial.println("Device Id: " + String(DEVICE_ID));
 #endif /* SERIAL_DEBUG */
+
+#if RECOVER
+    recover();
+#else
+    eeprom_init();
+#endif /* RECOVER */
 
     strip.begin();
     setStripStatus(COLOR_RED);
@@ -625,12 +634,6 @@ void setup()
     Udp.begin(8888);
     server.begin();
 
-#if RECOVER
-    recover();
-#else
-    eeprom_init();
-#endif /* RECOVER */
-
     user_init();
 }
 
@@ -641,7 +644,7 @@ void loop()
 
     if(flags & FLAG_NEW_FRAME)
     {
-        if(auto_increment && frame && frame % auto_increment == 0 && globals.leds_enabled && globals.profile_count > 1)
+        if(auto_increment && frame && frame % auto_increment == 0 && globals.flags & GLOBALS_FLAG_ENABLED && globals.profile_count > 1)
         {
             if(flags & FLAG_PROFILE_UPDATED)
             {
@@ -653,7 +656,7 @@ void loop()
             frame = 0;
         }
 
-        if(globals.leds_enabled || flags & FLAG_MANUAL_COLOR)
+        if(globals.flags & GLOBALS_FLAG_ENABLED || flags & FLAG_MANUAL_COLOR)
         {
             device_profile &device = current_profile.devices[0];
             digital_effect((effect) device.effect, strip.getPixels(), LED_COUNT, 0, frame, frames, device.args,
