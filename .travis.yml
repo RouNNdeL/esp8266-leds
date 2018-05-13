@@ -18,7 +18,8 @@ before_install:
   -in ./deploy_key.enc -out ./deploy_key -d
 
 deploy:
-  provider: script
-    script: bash scripts/deploy.sh
-    on:
-      branch: master
+- provider: script
+  skip_cleanup: true
+  script: scripts/deploy.sh
+  on:
+    branch: master
