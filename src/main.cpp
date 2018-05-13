@@ -257,8 +257,8 @@ void ICACHE_FLASH_ATTR debug_info()
     content += "<p>build_date: <b>" + BUILD_DATE + "</b></p>";
     content += "<p>reset_info: <b>" + ESP.getResetReason() + "</b></p>";
     content += "<p>device_id: <b>" + String(DEVICE_ID) + "</b></p>";
-    content += "<p>leds_enabled: <b>" + String(globals.flags & GLOBALS_FLAG_STATUSES) + "</b></p>";
-    content += "<p>statuses: <b>" + String(globals.flags & GLOBALS_FLAG_ENABLED) + "</b></p>";
+    content += "<p>leds_enabled: <b>" + String(globals.flags & GLOBALS_FLAG_ENABLED) + "</b></p>";
+    content += "<p>statuses: <b>" + String(globals.flags & GLOBALS_FLAG_STATUSES) + "</b></p>";
     content += "<p>brightness: <b>[";
     for(uint8_t i = 0; i < DEVICE_COUNT; i++)
     {
@@ -284,16 +284,19 @@ void ICACHE_FLASH_ATTR debug_info()
 
 void ICACHE_FLASH_ATTR receive_globals()
 {
-    if(server.hasArg("plain") && server.method() == HTTP_PUT && (server.arg("plain").length() == GLOBALS_SIZE * 2 ||
-            (server.arg("plain").length() < server.arg("plain").end()[-1] == '*')))
+    if(server.hasArg("plain") &&
+       server.method() == HTTP_PUT &&
+       (server.arg("plain").length() == GLOBALS_SIZE * 2 ||
+        (server.arg("plain").length() < GLOBALS_SIZE &&
+         server.arg("plain").end()[-1] == '*')))
     {
         uint8_t bytes[GLOBALS_SIZE];
         auto c = server.arg("plain");
         for(uint8_t i = 0; i < GLOBALS_SIZE; ++i)
         {
-            if(c[i * 2] == '*')
+            if(c[i * 2] == '*' || c[i*2 + 1] == '*')
             {
-                memcpy(bytes+i, &globals+i, GLOBALS_SIZE-i);
+                memcpy(bytes + i, ((uint8_t *) &globals) + i, GLOBALS_SIZE - i);
                 break;
             }
             if(c[i * 2] == '?' && c[i * 2 + 1] == '?')
@@ -660,7 +663,8 @@ void loop()
 
     if(flags & FLAG_NEW_FRAME)
     {
-        if(auto_increment && frame && frame % auto_increment == 0 && globals.flags & GLOBALS_FLAG_ENABLED && globals.profile_count > 1)
+        if(auto_increment && frame && frame % auto_increment == 0 && globals.flags & GLOBALS_FLAG_ENABLED &&
+           globals.profile_count > 1)
         {
             if(flags & FLAG_PROFILE_UPDATED)
             {
