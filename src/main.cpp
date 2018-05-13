@@ -283,13 +283,26 @@ void ICACHE_FLASH_ATTR debug_info()
 
 void ICACHE_FLASH_ATTR receive_globals()
 {
-    if(server.hasArg("plain") && server.arg("plain").length() == GLOBALS_SIZE * 2 && server.method() == HTTP_PUT)
+    if(server.hasArg("plain") && server.method() == HTTP_PUT && (server.arg("plain").length() == GLOBALS_SIZE * 2 ||
+            (server.arg("plain").length() < server.arg("plain").end()[-1] == '*')))
     {
         uint8_t bytes[GLOBALS_SIZE];
         auto c = server.arg("plain");
-        for(uint8_t i = 0; i < sizeof(bytes); ++i)
+        for(uint8_t i = 0; i < GLOBALS_SIZE; ++i)
         {
-            bytes[i] = char2int(c[i * 2]) * 16 + char2int(c[i * 2 + 1]);
+            if(c[i * 2] == '*')
+            {
+                memcpy(bytes+i, &globals+i, GLOBALS_SIZE-i);
+                break;
+            }
+            if(c[i * 2] == '?' && c[i * 2 + 1] == '?')
+            {
+                bytes[i] = ((uint8_t *) &globals)[i];
+            }
+            else
+            {
+                bytes[i] = char2int(c[i * 2]) * 16 + char2int(c[i * 2 + 1]);
+            }
         }
         uint8_t previous_profile = globals.profile_order[globals.n_profile];
         uint8_t previous_auto_increment = globals.auto_increment;
