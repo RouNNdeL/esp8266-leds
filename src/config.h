@@ -51,9 +51,8 @@
 #define SCALE8_C 1
 #define FASTLED_SCALE8_FIXED 1
 
-#define SERIAL_DEBUG 0
+#ifndef PAGE_DEBUG
 #define PAGE_DEBUG 1
-#define DEBUG 0
-#define RECOVER 0
+#endif /* PAGE_DEBUG */
 
 #endif //WIFICONTROLLER_CONFIG_H
