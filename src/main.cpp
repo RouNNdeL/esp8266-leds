@@ -5,6 +5,7 @@
 #include <EEPROM.h>
 #include <WiFiUdp.h>
 #include <ESP8266httpUpdate.h>
+#include <ArduinoOTA.h>
 
 extern "C" {
 #include "user_interface.h"
@@ -646,6 +647,7 @@ void setup()
 
     Udp.begin(8888);
     server.begin();
+    ArduinoOTA.begin();
 
     user_init();
 }
@@ -654,6 +656,7 @@ void loop()
 {
     server.handleClient();
     handleUdp();
+    ArduinoOTA.handle();
 
     if(flags & FLAG_NEW_FRAME)
     {
