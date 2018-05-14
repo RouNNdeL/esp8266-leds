@@ -28,6 +28,7 @@ typedef struct
     uint8_t n_profile;
     uint8_t flags;
     uint8_t auto_increment;
+    uint8_t color[3];
     uint8_t profile_order[PROFILE_COUNT];
 } __attribute__((packed)) global_settings;
 
@@ -41,6 +42,7 @@ void save_profile(profile *p, uint8_t n);
 
 #define GLOBALS_FLAG_ENABLED (1 << 0)
 #define GLOBALS_FLAG_STATUSES (1 << 1)
+#define GLOBALS_FLAG_EFFECTS (1 << 2)
 
 #define GLOBALS_SIZE sizeof(global_settings)
 #define DEVICE_SIZE sizeof(device_profile)

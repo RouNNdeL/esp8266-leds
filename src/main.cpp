@@ -36,7 +36,6 @@ convert_to_frames(frames, current_profile.devices[0].timing); flags &= ~FLAG_MAN
 profile current_profile;
 uint16_t frames[TIME_COUNT];
 uint32_t auto_increment;
-uint8_t manual_color[3] = {0x00, 0x00, 0x00};
 
 uint16_t time_to_frames(uint8_t time)
 {
@@ -250,6 +249,13 @@ HTTPUpdateResult update(uint8_t reboot)
 
 void ICACHE_FLASH_ATTR debug_info()
 {
+    String r = String(globals.color[0], 16);
+    String g = String(globals.color[1], 16);
+    String b = String(globals.color[2], 16);
+    r = r.length() == 1 ? "0" + r : r;
+    g = g.length() == 1 ? "0" + g : g;
+    b = b.length() == 1 ? "0" + b : b;
+
     String content = "<h2>" + String(AP_NAME) + "</h2>";
     content += "<p>config_url: <a href=\"" + String(CONFIG_PAGE) + "\">" + CONFIG_PAGE + "</a></p>";
     content += "<p>version_code: <b>" + String(VERSION_CODE) + "</b></p>";
@@ -257,8 +263,10 @@ void ICACHE_FLASH_ATTR debug_info()
     content += "<p>build_date: <b>" + BUILD_DATE + "</b></p>";
     content += "<p>reset_info: <b>" + ESP.getResetReason() + "</b></p>";
     content += "<p>device_id: <b>" + String(DEVICE_ID) + "</b></p>";
-    content += "<p>leds_enabled: <b>" + String(globals.flags & GLOBALS_FLAG_ENABLED) + "</b></p>";
-    content += "<p>statuses: <b>" + String(globals.flags & GLOBALS_FLAG_STATUSES) + "</b></p>";
+    content += "<p>leds_enabled: <b>" + String(globals.flags & GLOBALS_FLAG_ENABLED ? "true" : "false") + "</b></p>";
+    content += "<p>statuses: <b>" + String(globals.flags & GLOBALS_FLAG_STATUSES ? "true" : "false") + "</b></p>";
+    content += "<p>effects: <b>" + String(globals.flags & GLOBALS_FLAG_EFFECTS ? "true" : "false") + "</b></p>";
+    content += "<p>color: <b>#" + r + g + b + "</b></p>";
     content += "<p>brightness: <b>[";
     for(uint8_t i = 0; i < DEVICE_COUNT; i++)
     {
@@ -294,7 +302,7 @@ void ICACHE_FLASH_ATTR receive_globals()
         auto c = server.arg("plain");
         for(uint8_t i = 0; i < GLOBALS_SIZE; ++i)
         {
-            if(c[i * 2] == '*' || c[i*2 + 1] == '*')
+            if(c[i * 2] == '*' || c[i * 2 + 1] == '*')
             {
                 memcpy(bytes + i, ((uint8_t *) &globals) + i, GLOBALS_SIZE - i);
                 break;
@@ -379,9 +387,9 @@ void ICACHE_FLASH_ATTR receive_color()
     if(server.hasArg("plain") && server.arg("plain").length() == 6 && server.method() == HTTP_POST)
     {
         const String &c = server.arg("plain");
-        manual_color[0] = char2int(c[0]) * 16 + char2int(c[1]);
-        manual_color[1] = char2int(c[2]) * 16 + char2int(c[3]);
-        manual_color[2] = char2int(c[4]) * 16 + char2int(c[5]);
+        globals.color[0] = char2int(c[0]) * 16 + char2int(c[1]);
+        globals.color[1] = char2int(c[2]) * 16 + char2int(c[3]);
+        globals.color[2] = char2int(c[4]) * 16 + char2int(c[5]);
 
         if(flags & FLAG_PROFILE_UPDATED)
         {
@@ -389,18 +397,9 @@ void ICACHE_FLASH_ATTR receive_color()
             flags &= ~FLAG_PROFILE_UPDATED;
         }
 
-        current_profile.devices[0].effect = BREATHE;
-        current_profile.devices[0].timing[TIME_FADEIN] = 0;
-        current_profile.devices[0].timing[TIME_FADEOUT] = 0;
-        current_profile.devices[0].timing[TIME_ON] = 1;
-        current_profile.devices[0].timing[TIME_OFF] = 0;
-        current_profile.devices[0].color_count = 1;
-        current_profile.devices[0].args[ARG_BREATHE_END] = 255;
-        set_color_manual(current_profile.devices[0].colors, grb(color_from_buf(manual_color)));
-        convert_to_frames(frames, current_profile.devices[0].timing);
-
         flags |= FLAG_MANUAL_COLOR;
         globals.flags |= GLOBALS_FLAG_ENABLED;
+        save_globals(&globals);
 
         auto_increment = 0;
 
@@ -443,9 +442,9 @@ void ICACHE_FLASH_ATTR change_profile()
 
 void ICACHE_FLASH_ATTR handle_root()
 {
-    String r = String(manual_color[0], 16);
-    String g = String(manual_color[1], 16);
-    String b = String(manual_color[2], 16);
+    String r = String(globals.color[0], 16);
+    String g = String(globals.color[1], 16);
+    String b = String(globals.color[2], 16);
     r = r.length() == 1 ? "0" + r : r;
     g = g.length() == 1 ? "0" + g : g;
     b = b.length() == 1 ? "0" + b : b;
@@ -679,21 +678,33 @@ void loop()
 
         if(globals.flags & GLOBALS_FLAG_ENABLED)
         {
-            device_profile &device = current_profile.devices[0];
-            digital_effect((effect) device.effect, strip.getPixels(), LED_COUNT, 0, frame, frames, device.args,
-                           device.colors, device.color_count, device.color_cycles);
+            if(globals.flags & GLOBALS_FLAG_EFFECTS)
+            {
+                device_profile &device = current_profile.devices[0];
+                digital_effect((effect) device.effect, strip.getPixels(), LED_COUNT, 0, frame, frames, device.args,
+                               device.colors, device.color_count, device.color_cycles);
 
-            convert_bufs();
+                convert_bufs();
 
-            strip.show();
-            flags &= ~FLAG_NEW_FRAME;
+                strip.show();
+                flags &= ~FLAG_NEW_FRAME;
+            }
+            else
+            {
+                uint8_t *p = strip.getPixels();
+                for(led_count_t i = 0; i < LED_COUNT; ++i)
+                {
+                    set_color_manual(p + i * 3, grb(color_from_buf(globals.color)));
+                }
+                strip.show();
+            }
         }
         else
         {
-            uint8_t* p = strip.getPixels();
+            uint8_t *p = strip.getPixels();
             for(led_count_t i = 0; i < LED_COUNT; ++i)
             {
-                set_color_manual(p+i*3, grb(COLOR_BLACK));
+                set_color_manual(p + i * 3, grb(COLOR_BLACK));
             }
             strip.show();
         }
