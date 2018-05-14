@@ -311,7 +311,7 @@ void ICACHE_FLASH_ATTR receive_globals()
         uint8_t previous_profile = globals.profile_order[globals.n_profile];
         uint8_t previous_auto_increment = globals.auto_increment;
         memcpy(&globals, bytes, GLOBALS_SIZE);
-        if(previous_profile != globals.profile_order[globals.n_profile] || flags & FLAG_MANUAL_COLOR)
+        if(previous_profile != globals.profile_order[globals.n_profile])
         {
             frame = 0;
             refresh_profile();
@@ -400,6 +400,7 @@ void ICACHE_FLASH_ATTR receive_color()
         convert_to_frames(frames, current_profile.devices[0].timing);
 
         flags |= FLAG_MANUAL_COLOR;
+        globals.flags |= GLOBALS_FLAG_ENABLED;
 
         auto_increment = 0;
 
@@ -676,7 +677,7 @@ void loop()
             frame = 0;
         }
 
-        if(globals.flags & GLOBALS_FLAG_ENABLED || flags & FLAG_MANUAL_COLOR)
+        if(globals.flags & GLOBALS_FLAG_ENABLED)
         {
             device_profile &device = current_profile.devices[0];
             digital_effect((effect) device.effect, strip.getPixels(), LED_COUNT, 0, frame, frames, device.args,
@@ -689,7 +690,11 @@ void loop()
         }
         else
         {
-            strip.setBrightness(0);
+            uint8_t* p = strip.getPixels();
+            for(led_count_t i = 0; i < LED_COUNT; ++i)
+            {
+                set_color_manual(p+i*3, grb(COLOR_BLACK));
+            }
             strip.show();
         }
     }
