@@ -30,6 +30,8 @@ volatile uint8_t flags;
 global_settings globals;
 #define increment_profile() globals.n_profile = (globals.n_profile+1)%globals.profile_count
 
+uint8_t color_converted[3];
+
 #define refresh_profile() load_profile(&current_profile, globals.profile_order[globals.n_profile]); \
 convert_to_frames(frames, current_profile.devices[0].timing); flags &= ~FLAG_MANUAL_COLOR
 
@@ -108,6 +110,14 @@ uint32_t autoincrement_to_frames(uint8_t time)
     return 21600 * FPS;
 }
 
+void convert_color()
+{
+    set_color_manual(color_converted, color_brightness(globals.brightness[0], color_from_buf(globals.color)));
+    color_converted[0] = actual_brightness(color_converted[0]);
+    color_converted[1] = actual_brightness(color_converted[1]);
+    color_converted[2] = actual_brightness(color_converted[2]);
+}
+
 void convert_bufs()
 {
     /* Convert to actual brightness */
@@ -140,6 +150,7 @@ void eeprom_init()
     load_globals(&globals);
     auto_increment = autoincrement_to_frames(globals.auto_increment);
     refresh_profile();
+    convert_color();
 }
 
 uint8_t char2int(char input)
@@ -329,6 +340,7 @@ void ICACHE_FLASH_ATTR receive_globals()
             auto_increment = autoincrement_to_frames(globals.auto_increment);
         }
         save_globals(&globals);
+        convert_color();
         server.send(204);
     }
     else
@@ -662,10 +674,9 @@ void loop()
             else
             {
                 uint8_t *p = strip.getPixels();
-                uint8_t c[] = {color_brightness(globals.brightness[0], grb(color_from_buf(globals.color)))};
                 for(led_count_t i = 0; i < LED_COUNT; ++i)
                 {
-                    set_color_manual(p + i * 3, color_from_buf(c));
+                    set_color_manual(p + i * 3, grb(color_from_buf(color_converted)));
                 }
                 strip.show();
             }
