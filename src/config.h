@@ -6,8 +6,8 @@
 #define WIFICONTROLLER_CONFIG_H
 
 
-#define VERSION_CODE 11
-#define VERSION_NAME "0.32"
+#define VERSION_CODE 12
+#define VERSION_NAME "0.33"
 #define BUILD_DATE (String(__TIME__)+"@" + __DATE__)
 
 #define FPS 100

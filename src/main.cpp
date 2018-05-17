@@ -662,9 +662,10 @@ void loop()
             else
             {
                 uint8_t *p = strip.getPixels();
+                uint8_t c[] = {color_brightness(globals.brightness[0], grb(color_from_buf(globals.color)))};
                 for(led_count_t i = 0; i < LED_COUNT; ++i)
                 {
-                    set_color_manual(p + i * 3, grb(color_from_buf(globals.color)));
+                    set_color_manual(p + i * 3, color_from_buf(c));
                 }
                 strip.show();
             }
