@@ -382,35 +382,6 @@ void ICACHE_FLASH_ATTR receive_profile()
     }
 }
 
-void ICACHE_FLASH_ATTR receive_color()
-{
-    if(server.hasArg("plain") && server.arg("plain").length() == 6 && server.method() == HTTP_POST)
-    {
-        const String &c = server.arg("plain");
-        globals.color[0] = char2int(c[0]) * 16 + char2int(c[1]);
-        globals.color[1] = char2int(c[2]) * 16 + char2int(c[3]);
-        globals.color[2] = char2int(c[4]) * 16 + char2int(c[5]);
-
-        if(flags & FLAG_PROFILE_UPDATED)
-        {
-            save_profile(&current_profile, globals.profile_order[globals.n_profile]);
-            flags &= ~FLAG_PROFILE_UPDATED;
-        }
-
-        flags |= FLAG_MANUAL_COLOR;
-        globals.flags |= GLOBALS_FLAG_ENABLED;
-        save_globals(&globals);
-
-        auto_increment = 0;
-
-        server.send(200, "application/json", R"({"status": "success"})");
-    }
-    else
-    {
-        server.send(400, "text/html", "Invalid request");
-    }
-}
-
 void ICACHE_FLASH_ATTR change_profile()
 {
     if(server.hasArg("plain") && server.arg("plain").length() == 1 && server.method() == HTTP_POST)
@@ -643,7 +614,6 @@ void setup()
     server.on("/globals", receive_globals);
     server.on("/profile", receive_profile);
     server.on("/profile_n", change_profile);
-    server.on("/color", receive_color);
     server.on("/api", send_json);
     server.on("/update", manual_update_check);
     server.on("/apply_update", apply_update);
