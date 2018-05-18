@@ -256,6 +256,60 @@ HTTPUpdateResult update(uint8_t reboot)
     return ret;
 }
 
+String getDeviceJson()
+{
+    String profile_array = "[";
+    for(uint8_t i = 0; i < globals.profile_count; ++i)
+    {
+        if(i) profile_array += ",";
+        profile_array += globals.profile_order[i];
+    }
+    profile_array += "]";
+    String brightness_array = "[";
+    for(uint8_t i = 0; i < DEVICE_COUNT; ++i)
+    {
+        if(i) brightness_array += ",";
+        brightness_array += globals.brightness[DEVICE_COUNT];
+    }
+    brightness_array += "]";
+    String content = R"({"ap_name":")" + String(AP_NAME) +
+                     R"(","version_code":)" + String(VERSION_CODE) +
+                     R"(,"version_name":")" + String(VERSION_NAME) +
+                     R"(","device_id":)" + String(DEVICE_ID) +
+                     ",\"auto_increment\":" + String(auto_increment / FPS) +
+                     ",\"current_profile\":" + String(globals.n_profile) +
+                     ",\"color\":" + String((uint32_t) globals.color[0] << 16 | (uint32_t) globals.color[1] << 8 |
+                                            (uint32_t) globals.color[2]) +
+                     ",\"flags\":" + String(flags) +
+                     ",\"brightness\":" + String(brightness_array) +
+                     ",\"profiles\": " + profile_array + "}";
+    return content;
+}
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wconversion"
+
+uint8_t sendDeviceState(const String &requestId)
+{
+    HTTPClient http;
+    http.begin(HTTP_UPDATE_HOST, HTTP_UPDATE_PORT, String(HTTP_STATE_URL),
+               HTTP_UPDATE_HTTPS_FINGERPRINT);
+    http.useHTTP10(true);
+    http.setTimeout(500);
+    http.setUserAgent(F("ESP8266"));
+    http.addHeader(F("Content-Type"), "application/json");
+
+    if(requestId.length() > 0 && requestId[0] != 0x00)
+        http.addHeader(F("x-Request-Id"), requestId);
+
+
+    int code = http.POST(getDeviceJson());
+    http.end();
+    return code;
+}
+
+#pragma clang diagnostic pop
+
 #if PAGE_DEBUG
 
 void ICACHE_FLASH_ATTR debug_info()
@@ -341,6 +395,8 @@ void ICACHE_FLASH_ATTR receive_globals()
         }
         save_globals(&globals);
         convert_color();
+
+        sendDeviceState(server.header("x-Request-Id"));
         server.send(204);
     }
     else
@@ -458,22 +514,7 @@ void ICACHE_FLASH_ATTR restart()
 
 void ICACHE_FLASH_ATTR send_json()
 {
-    String profile_array = "[";
-    for(uint8_t i = 0; i < globals.profile_count; ++i)
-    {
-        if(i) profile_array += ",";
-        profile_array += globals.profile_order[i];
-    }
-    profile_array += "]";
-    String content = R"({"ap_name":")" + String(AP_NAME) +
-                     R"(","version_code":)" + String(VERSION_CODE) +
-                     R"(,"version_name":")" + String(VERSION_NAME) +
-                     R"(","device_id":)" + String(DEVICE_ID) +
-                     ",\"leds_enabled\":" + (globals.flags & GLOBALS_FLAG_ENABLED ? "true" : "false") +
-                     ",\"current_profile\":" + String(globals.n_profile) +
-                     ",\"flags\":" + String(flags) +
-                     ",\"profiles\": " + profile_array + "}";
-    server.send(200, "application/json", content);
+    server.send(200, "application/json", getDeviceJson());
 }
 
 void ICACHE_FLASH_ATTR manual_update_check()
@@ -629,6 +670,10 @@ void setup()
     server.on("/api", send_json);
     server.on("/update", manual_update_check);
     server.on("/apply_update", apply_update);
+
+    const char *headers[] = {"x-Request-Id"};
+    size_t headers_size = sizeof(headers)/sizeof(char*);
+    server.collectHeaders(headers, headers_size);
 
     Udp.begin(8888);
     server.begin();

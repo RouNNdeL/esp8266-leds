@@ -38,6 +38,7 @@
 #define HTTP_UPDATE_HTTPS_FINGERPRINT "f8 0c f7 57 6c ca 1f e9 51 8f 21 7a 8f 43 0c 9c 7c 28 2c 50"
 #define HTTP_UPDATE_PORT 443
 #define HTTP_UPDATE_URL "/api/esp_update.php"
+#define HTTP_STATE_URL "/api/local/esp_report_state.php"
 
 #define UDP_DISCOVERY_MSG "ROUNDEL_IOT_DISCOVERY"
 #define UDP_DISCOVERY_RESPONSE "ROUNDEL_IOT_RESPONSE"
