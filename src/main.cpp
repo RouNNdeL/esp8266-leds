@@ -262,14 +262,14 @@ String getDeviceJson()
     for(uint8_t i = 0; i < globals.profile_count; ++i)
     {
         if(i) profile_array += ",";
-        profile_array += globals.profile_order[i];
+        profile_array += String(globals.profile_order[i]);
     }
     profile_array += "]";
     String brightness_array = "[";
     for(uint8_t i = 0; i < DEVICE_COUNT; ++i)
     {
         if(i) brightness_array += ",";
-        brightness_array += globals.brightness[DEVICE_COUNT];
+        brightness_array += String(globals.brightness[i]);
     }
     brightness_array += "]";
     String content = R"({"ap_name":")" + String(AP_NAME) +
@@ -500,7 +500,7 @@ void ICACHE_FLASH_ATTR handle_root()
         content += "<option value=\"" + String(i + 1) + "\" " + selected + ">" + String(globals.profile_order[i]) +
                    "</option>";
     }
-    content += R"(</select><p><a href="/restart">Restart device</a></p><p><a href="/update">Check for updates</a></p> <script>document.getElementById("a").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("POST","/color",!0),t.send(e.target.value.substring(1))}),document.getElementById("b").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("POST","/profile_n",!0),t.send(new Uint8Array([e.target.value]))});</script> </body></html>)";
+    content += R"(</select><p><a href="/restart">Restart device</a></p><p><a href="/update">Check for updates</a></p> <script>document.getElementById("a").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("PUT","/globals",!0),t.send("??????????"+e.target.value.substring(1)+"*")}),document.getElementById("b").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("PUT","/globals",!0),t.send("????"+("0"+(16).toString(e.target.value)).slice(-2)+"*";)});</script> </body></html>)";
     server.send(200, "text/html", content);
 }
 
@@ -666,7 +666,6 @@ void setup()
     server.on("/config", redirect_to_config);
     server.on("/globals", receive_globals);
     server.on("/profile", receive_profile);
-    server.on("/profile_n", change_profile);
     server.on("/api", send_json);
     server.on("/update", manual_update_check);
     server.on("/apply_update", apply_update);

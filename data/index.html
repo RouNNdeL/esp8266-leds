@@ -16,8 +16,8 @@
     document.getElementById("a").addEventListener("change", function (e) {
         var http = new XMLHttpRequest();
         var url = "color";
-        http.open("POST", url, true);
-        http.send(e.target.value.substring(1));
+        http.open("PUT", url, true);
+        http.send("??????????"+e.target.value.substring(1)+"*");
     });
     document.getElementById("b").addEventListener("change", function (e) {
         var http = new XMLHttpRequest();
