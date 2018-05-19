@@ -6,11 +6,15 @@
 #define WIFICONTROLLER_CONFIG_H
 
 
-#define VERSION_CODE 14
-#define VERSION_NAME "0.4"
+#define VERSION_CODE 15
+#define VERSION_NAME "0.5"
 #define BUILD_DATE (String(__TIME__)+"@" + __DATE__)
 
 #define FPS 100
+
+#ifndef VIRTUAL_DEVICES
+#define VIRTUAL_DEVICES {60}
+#endif /* VIRTUAL_DEVICES */
 
 #ifndef LED_PIN
 #define LED_PIN 4
@@ -43,9 +47,15 @@
 #define UDP_DISCOVERY_MSG "ROUNDEL_IOT_DISCOVERY"
 #define UDP_DISCOVERY_RESPONSE "ROUNDEL_IOT_RESPONSE"
 
+#ifndef PROFILE_COUNT
 #define PROFILE_COUNT 24
-#define COLOR_COUNT 16
+#endif /* PROFILE_COUNT */
+
+#ifndef DEVICE_COUNT
 #define DEVICE_COUNT 1
+#endif /* DEVICE_COUNT */
+
+#define COLOR_COUNT 16
 #define ARG_COUNT 5
 #define TIME_COUNT 6
 

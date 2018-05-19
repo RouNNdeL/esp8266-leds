@@ -27,16 +27,18 @@ os_timer_t frameTimer;
 volatile uint32_t frame;
 volatile uint8_t flags;
 
+led_count_t virtual_devices[DEVICE_COUNT] = VIRTUAL_DEVICES;
+
 global_settings globals;
 #define increment_profile() globals.n_profile = (globals.n_profile+1)%globals.profile_count
 
 uint8_t color_converted[3];
 
 #define refresh_profile() load_profile(&current_profile, globals.profile_order[globals.n_profile]); \
-convert_to_frames(frames, current_profile.devices[0].timing); flags &= ~FLAG_MANUAL_COLOR
+convert_all_frames(); flags &= ~FLAG_MANUAL_COLOR
 
 profile current_profile;
-uint16_t frames[TIME_COUNT];
+uint16_t frames[DEVICE_COUNT][TIME_COUNT];
 uint32_t auto_increment;
 
 uint16_t time_to_frames(uint8_t time)
@@ -73,6 +75,14 @@ void convert_to_frames(uint16_t *frames, uint8_t *times)
     for(uint8_t i = 0; i < TIME_COUNT; ++i)
     {
         frames[i] = time_to_frames(times[i]);
+    }
+}
+
+void convert_all_frames()
+{
+    for(uint8_t i = 0; i < DEVICE_COUNT; ++i)
+    {
+        convert_to_frames(frames[i], current_profile.devices[i].timing);
     }
 }
 
@@ -166,17 +176,20 @@ uint8_t char2int(char input)
 
 void setStripStatus(uint8_t r, uint8_t g, uint8_t b)
 {
-    if(!(globals.flags & GLOBALS_FLAG_STATUSES))
-        return;
-    strip.setBrightness(UINT8_MAX);
-    for(led_count_t i = 0; i < LED_COUNT; ++i)
+    for(uint8_t i = 0; i < DEVICE_COUNT; ++i)
     {
-        if(i % 4)
-            strip.setPixelColor(i, color_brightness(12, r, g, b));
-        else
-            strip.setPixelColor(i, r, g, b);
+        if(!(globals.flags[i] & GLOBALS_FLAG_STATUSES))
+            return;
+        strip.setBrightness(UINT8_MAX);
+        for(led_count_t j = 0; j < virtual_devices[i]; ++j)
+        {
+            if(j % 4)
+                strip.setPixelColor(j, color_brightness(12, r, g, b));
+            else
+                strip.setPixelColor(j, r, g, b);
+        }
+        strip.show();
     }
-    strip.show();
 }
 
 int checkUpdate()
@@ -265,23 +278,33 @@ String getDeviceJson()
         profile_array += String(globals.profile_order[i]);
     }
     profile_array += "]";
+
     String brightness_array = "[";
+    String flags_array = "[";
+    String color_array = "[";
     for(uint8_t i = 0; i < DEVICE_COUNT; ++i)
     {
         if(i) brightness_array += ",";
+        if(i) flags_array += ",";
+        if(i) color_array += ",";
+
         brightness_array += String(globals.brightness[i]);
+        flags_array += String(globals.flags[i]);
+        color_array += String((uint32_t) globals.color[0] << 16 | (uint16_t) globals.color[1] << 8 | globals.color[2]);
     }
     brightness_array += "]";
+    flags_array += "]";
+    color_array += "]";
+
     String content = R"({"ap_name":")" + String(AP_NAME) +
                      R"(","version_code":)" + String(VERSION_CODE) +
                      R"(,"version_name":")" + String(VERSION_NAME) +
                      R"(","device_id":)" + String(DEVICE_ID) +
                      ",\"auto_increment\":" + String(auto_increment / FPS) +
                      ",\"current_profile\":" + String(globals.n_profile) +
-                     ",\"color\":" + String((uint32_t) globals.color[0] << 16 | (uint32_t) globals.color[1] << 8 |
-                                            (uint32_t) globals.color[2]) +
-                     ",\"flags\":" + String(flags) +
-                     ",\"brightness\":" + String(brightness_array) +
+                     ",\"color\":" + color_array +
+                     ",\"flags\":" + flags_array +
+                     ",\"brightness\":" + brightness_array +
                      ",\"profiles\": " + profile_array + "}";
     return content;
 }
@@ -321,6 +344,20 @@ void ICACHE_FLASH_ATTR debug_info()
     g = g.length() == 1 ? "0" + g : g;
     b = b.length() == 1 ? "0" + b : b;
 
+    String flags_array = "[";
+    String brightness_array = "[";
+    for(uint8_t i = 0; i < DEVICE_COUNT; i++)
+    {
+        if(i) flags_array += ",";
+        if(i) brightness_array += ",";
+
+        flags_array += String(globals.flags[i]);
+        brightness_array += String(globals.brightness[i]);
+    }
+    flags_array += "]";
+    brightness_array += "]";
+
+
     String content = "<h2>" + String(AP_NAME) + "</h2>";
     content += "<p>config_url: <a href=\"" + String(CONFIG_PAGE) + "\">" + CONFIG_PAGE + "</a></p>";
     content += "<p>version_code: <b>" + String(VERSION_CODE) + "</b></p>";
@@ -328,17 +365,9 @@ void ICACHE_FLASH_ATTR debug_info()
     content += "<p>build_date: <b>" + BUILD_DATE + "</b></p>";
     content += "<p>reset_info: <b>" + ESP.getResetReason() + "</b></p>";
     content += "<p>device_id: <b>" + String(DEVICE_ID) + "</b></p>";
-    content += "<p>leds_enabled: <b>" + String(globals.flags & GLOBALS_FLAG_ENABLED ? "true" : "false") + "</b></p>";
-    content += "<p>statuses: <b>" + String(globals.flags & GLOBALS_FLAG_STATUSES ? "true" : "false") + "</b></p>";
-    content += "<p>effects: <b>" + String(globals.flags & GLOBALS_FLAG_EFFECTS ? "true" : "false") + "</b></p>";
+    content += "<p>flags: <b>" + flags_array + "</b></p>";
     content += "<p>color: <b>#" + r + g + b + "</b></p>";
-    content += "<p>brightness: <b>[";
-    for(uint8_t i = 0; i < DEVICE_COUNT; i++)
-    {
-        if(i) content += ",";
-        content += String(globals.brightness[i]);
-    }
-    content += "]</b></p>";
+    content += "<p>brightness: <b>" + brightness_array + "</b></p>";
     content += "<p>profile_count: <b>" + String(globals.profile_count) + "</b></p>";
     content += "<p>auto_increment: <b>" + String(globals.auto_increment) + "</b></p>";
     content += "<p>auto_increment frames: <b>" + String(auto_increment) + "</b></p>";
@@ -429,7 +458,7 @@ void ICACHE_FLASH_ATTR receive_profile()
         if(globals.n_profile == bytes[0])
         {
             memcpy(&current_profile, bytes + 1, PROFILE_SIZE);
-            convert_to_frames(frames, current_profile.devices[0].timing);
+            convert_all_frames();
             flags |= FLAG_PROFILE_UPDATED;
         }
         else
@@ -500,7 +529,7 @@ void ICACHE_FLASH_ATTR handle_root()
         content += "<option value=\"" + String(i + 1) + "\" " + selected + ">" + String(globals.profile_order[i]) +
                    "</option>";
     }
-    content += R"(</select><p><a href="/restart">Restart device</a></p><p><a href="/update">Check for updates</a></p> <script>document.getElementById("a").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("PUT","/globals",!0),t.send("??????????"+e.target.value.substring(1)+"*")}),document.getElementById("b").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("PUT","/globals",!0),t.send("????"+("0"+(16).toString(e.target.value)).slice(-2)+"*";)});</script> </body></html>)";
+    content += R"(</select><p><a href="/restart">Restart device</a></p><p><a href="/update">Check for updates</a></p> <script>document.getElementById("a").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("PUT","/globals",!0),t.send("??????????"+e.target.value.substring(1)+"*")}),document.getElementById("b").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("PUT","/globals",!0),t.send("????"+("0"+(16).toString(e.target.value)).slice(-2))+"*";)});</script> </body></html>)";
     server.send(200, "text/html", content);
 }
 
@@ -584,29 +613,30 @@ void recover()
     for(uint8_t i = 0; i < DEVICE_COUNT; ++i)
     {
         globals.brightness[i] = 0xff;
+        globals.flags[i] = GLOBALS_FLAG_ENABLED | GLOBALS_FLAG_STATUSES;
+
+        current_profile.devices[i].effect = PIECES;
+        current_profile.devices[i].color_count = 2;
+        current_profile.devices[i].color_cycles = 1;
+        current_profile.devices[i].timing[TIME_OFF] = 0;
+        current_profile.devices[i].timing[TIME_FADEIN] = 0;
+        current_profile.devices[i].timing[TIME_ON] = 60;
+        current_profile.devices[i].timing[TIME_FADEOUT] = 30;
+        current_profile.devices[i].timing[TIME_ROTATION] = 90;
+        current_profile.devices[i].timing[TIME_DELAY] = 0;
+        current_profile.devices[i].args[ARG_BIT_PACK] = DIRECTION | SMOOTH;
+        current_profile.devices[i].args[ARG_PIECES_PIECE_COUNT] = 6;
+        current_profile.devices[i].args[ARG_PIECES_COLOR_COUNT] = 2;
+        set_color_manual(current_profile.devices[i].colors, grb(COLOR_RED));
+        set_color_manual(current_profile.devices[i].colors + 3, grb(COLOR_BLUE));
     }
+
     globals.auto_increment = 0;
     globals.profile_order[0] = 0;
     globals.profile_count = 1;
-    globals.flags = GLOBALS_FLAG_ENABLED | GLOBALS_FLAG_STATUSES;
     globals.n_profile = 0;
 
-    current_profile.devices[0].effect = PIECES;
-    current_profile.devices[0].color_count = 2;
-    current_profile.devices[0].color_cycles = 1;
-    current_profile.devices[0].timing[TIME_OFF] = 0;
-    current_profile.devices[0].timing[TIME_FADEIN] = 0;
-    current_profile.devices[0].timing[TIME_ON] = 60;
-    current_profile.devices[0].timing[TIME_FADEOUT] = 30;
-    current_profile.devices[0].timing[TIME_ROTATION] = 90;
-    current_profile.devices[0].timing[TIME_DELAY] = 0;
-    current_profile.devices[0].args[ARG_BIT_PACK] = DIRECTION | SMOOTH;
-    current_profile.devices[0].args[ARG_PIECES_PIECE_COUNT] = 6;
-    current_profile.devices[0].args[ARG_PIECES_COLOR_COUNT] = 2;
-    set_color_manual(current_profile.devices[0].colors, grb(COLOR_RED));
-    set_color_manual(current_profile.devices[0].colors + 3, grb(COLOR_BLUE));
-
-    convert_to_frames(frames, current_profile.devices[0].timing);
+    convert_all_frames();
 
     save_globals(&globals);
     save_profile(&current_profile, 0);
@@ -671,7 +701,7 @@ void setup()
     server.on("/apply_update", apply_update);
 
     const char *headers[] = {"x-Request-Id"};
-    size_t headers_size = sizeof(headers)/sizeof(char*);
+    size_t headers_size = sizeof(headers) / sizeof(char *);
     server.collectHeaders(headers, headers_size);
 
     Udp.begin(8888);
@@ -689,8 +719,50 @@ void loop()
 
     if(flags & FLAG_NEW_FRAME)
     {
-        if(auto_increment && frame && frame % auto_increment == 0 && globals.flags & GLOBALS_FLAG_ENABLED &&
-           globals.profile_count > 1)
+        uint8 enabled = 0;
+
+        uint16_t virtual_led_offset = 0;
+        for(uint8_t d = 0; d < DEVICE_COUNT; ++d)
+        {
+            uint8_t *p = strip.getPixels() + virtual_led_offset * 3;
+            if(globals.flags[d] & GLOBALS_FLAG_ENABLED)
+            {
+                enabled = 1;
+                if(globals.flags[d] & GLOBALS_FLAG_EFFECTS)
+                {
+
+                    device_profile &device = current_profile.devices[d];
+                    digital_effect((effect) device.effect, p, virtual_devices[d], 0, frame + frames[d][TIME_DELAY],
+                                   frames[d], device.args, device.colors, device.color_count, device.color_cycles);
+
+
+                    convert_bufs();
+
+                    strip.show();
+                    flags &= ~FLAG_NEW_FRAME;
+                }
+                else
+                {
+                    for(led_count_t i = 0; i < virtual_devices[d]; ++i)
+                    {
+                        set_color_manual(p + i * 3, grb(color_from_buf(color_converted)));
+                    }
+                    strip.show();
+                }
+            }
+            else
+            {
+                for(led_count_t i = 0; i < LED_COUNT; ++i)
+                {
+                    set_color_manual(p + i * 3, grb(COLOR_BLACK));
+                }
+                strip.show();
+            }
+
+            virtual_led_offset += virtual_devices[d];
+        }
+
+        if(auto_increment && frame && frame % auto_increment == 0 && enabled && globals.profile_count > 1)
         {
             if(flags & FLAG_PROFILE_UPDATED)
             {
@@ -700,39 +772,6 @@ void loop()
             increment_profile();
             refresh_profile();
             frame = 0;
-        }
-
-        if(globals.flags & GLOBALS_FLAG_ENABLED)
-        {
-            if(globals.flags & GLOBALS_FLAG_EFFECTS)
-            {
-                device_profile &device = current_profile.devices[0];
-                digital_effect((effect) device.effect, strip.getPixels(), LED_COUNT, 0, frame, frames, device.args,
-                               device.colors, device.color_count, device.color_cycles);
-
-                convert_bufs();
-
-                strip.show();
-                flags &= ~FLAG_NEW_FRAME;
-            }
-            else
-            {
-                uint8_t *p = strip.getPixels();
-                for(led_count_t i = 0; i < LED_COUNT; ++i)
-                {
-                    set_color_manual(p + i * 3, grb(color_from_buf(color_converted)));
-                }
-                strip.show();
-            }
-        }
-        else
-        {
-            uint8_t *p = strip.getPixels();
-            for(led_count_t i = 0; i < LED_COUNT; ++i)
-            {
-                set_color_manual(p + i * 3, grb(COLOR_BLACK));
-            }
-            strip.show();
         }
     }
 }
