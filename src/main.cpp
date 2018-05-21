@@ -17,7 +17,6 @@ extern "C" {
 
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 ESP8266WebServer server(80);
-WiFiUDP Udp;
 
 #define FLAG_NEW_FRAME (1 << 0)
 #define FLAG_PROFILE_UPDATED (1 << 1)
@@ -481,7 +480,7 @@ void ICACHE_FLASH_ATTR receive_profile()
 
 void ICACHE_FLASH_ATTR handle_root()
 {
-    // TODO: Add seperate pages for each virtual device
+    // TODO: Add separate pages for each virtual device
     String r = String(globals.color[0], 16);
     String g = String(globals.color[1], 16);
     String b = String(globals.color[2], 16);
@@ -551,29 +550,6 @@ void on_disconnected(const WiFiEventStationModeDisconnected &event)
 void configModeCallback(WiFiManager *myWiFiManager)
 {
     setStripStatus(COLOR_CYAN);
-}
-
-void handleUdp()
-{
-    int packetSize = Udp.parsePacket();
-    if(packetSize)
-    {
-        uint8_t buffer[32];
-        int len = Udp.read(buffer, 32);
-        if(len > 0)
-        {
-            buffer[len] = 0;
-        }
-        if(String((char *) buffer) == UDP_DISCOVERY_MSG)
-        {
-            Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
-            String resp = R"({"message":")" + String(UDP_DISCOVERY_RESPONSE) + R"(", "name":")" + AP_NAME + "\"}";
-            char bytes[resp.length()];
-            resp.toCharArray(bytes, resp.length() + 1);
-            Udp.write(bytes, resp.length());
-            Udp.endPacket();
-        }
-    }
 }
 
 void recover()
@@ -674,7 +650,6 @@ void setup()
     size_t headers_size = sizeof(headers) / sizeof(char *);
     server.collectHeaders(headers, headers_size);
 
-    Udp.begin(8888);
     server.begin();
     ArduinoOTA.begin();
 
@@ -684,7 +659,6 @@ void setup()
 void loop()
 {
     server.handleClient();
-    handleUdp();
     ArduinoOTA.handle();
 
     if(flags & FLAG_NEW_FRAME)
