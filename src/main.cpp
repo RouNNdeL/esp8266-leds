@@ -20,7 +20,7 @@ ESP8266WebServer server(80);
 
 #define FLAG_NEW_FRAME (1 << 0)
 #define FLAG_PROFILE_UPDATED (1 << 1)
-#define FLAG_MANUAL_COLOR (1 << 2)
+#define FLAG_TRANSITION (1 << 2)
 
 os_timer_t frameTimer;
 volatile uint32_t frame;
@@ -31,10 +31,12 @@ led_count_t virtual_devices[DEVICE_COUNT] = VIRTUAL_DEVICES;
 global_settings globals;
 #define increment_profile() globals.n_profile = (globals.n_profile+1)%globals.profile_count
 
-uint8_t color_converted[3];
+/* The first 3 bytes are the current color, the last 3 bytes are the old color to transition from */
+uint8_t color_converted[6 * DEVICE_COUNT] = {};
+volatile transition_t transition_frame;
 
 #define refresh_profile() load_profile(&current_profile, globals.profile_order[globals.n_profile]); \
-convert_all_frames(); flags &= ~FLAG_MANUAL_COLOR
+convert_all_frames()
 
 profile current_profile;
 uint16_t frames[DEVICE_COUNT][TIME_COUNT];
@@ -121,30 +123,31 @@ uint32_t autoincrement_to_frames(uint8_t time)
 
 void convert_color()
 {
-    set_color_manual(color_converted, color_brightness(globals.brightness[0], color_from_buf(globals.color)));
-    color_converted[0] = actual_brightness(color_converted[0]);
-    color_converted[1] = actual_brightness(color_converted[1]);
-    color_converted[2] = actual_brightness(color_converted[2]);
-}
-
-void convert_bufs()
-{
-    /* Convert to actual brightness */
-    uint8_t *p = strip.getPixels();
-    for(uint8_t i = 0; i < LED_COUNT; ++i)
+    for(uint8_t i = 0; i < DEVICE_COUNT; ++i)
     {
-        uint8_t index = i * 3;
-        set_color_manual(p + index, color_brightness(globals.brightness[0], color_from_buf(p + index)));
-        p[index] = actual_brightness(p[index]);
-        p[index + 1] = actual_brightness(p[index + 1]);
-        p[index + 2] = actual_brightness(p[index + 2]);
+        uint8_t index = i * 6;
+        /* Copy the now old color to its place (3 bytes after the new) */
+        memcpy(color_converted + index + 3, color_converted + index, 3);
+        set_color_manual(color_converted, color_brightness(
+                (globals.flags[i] & GLOBALS_FLAG_ENABLED) ? globals.brightness[i] : 0,
+                color_from_buf(globals.color + index)
+        ));
+        color_converted[index] = actual_brightness(color_converted[index]);
+        color_converted[index + 1] = actual_brightness(color_converted[index + 1]);
+        color_converted[index + 2] = actual_brightness(color_converted[index + 2]);
+
+
     }
+
+    transition_frame = 0;
+    flags |= FLAG_TRANSITION;
 }
 
 void timerCallback(void *pArg)
 {
     flags |= FLAG_NEW_FRAME;
     frame++;
+    if(flags & FLAG_TRANSITION) transition_frame++;
 }
 
 void user_init()
@@ -364,6 +367,9 @@ void ICACHE_FLASH_ATTR debug_info()
     content += "<p>build_date: <b>" + BUILD_DATE + "</b></p>";
     content += "<p>reset_info: <b>" + ESP.getResetReason() + "</b></p>";
     content += "<p>device_id: <b>" + String(DEVICE_ID) + "</b></p>";
+    content += "<p>device_flags: <b>" + String(flags) + "</b></p>";
+    content += "<p>device_frame: <b>" + String(frame) + "</b></p>";
+    content += "<p>device_transition_frame: <b>" + String(transition_frame) + "</b></p>";
     content += "<p>flags: <b>" + flags_array + "</b></p>";
     content += "<p>color: <b>#" + r + g + b + "</b></p>";
     content += "<p>brightness: <b>" + brightness_array + "</b></p>";
@@ -376,6 +382,13 @@ void ICACHE_FLASH_ATTR debug_info()
     {
         if(i) content += ",";
         content += String(globals.profile_order[i]);
+    }
+    content += "]</b></p>";
+    content += "<p>color_converted: <b>[";
+    for(uint8_t i = 0; i < sizeof(color_converted); i++)
+    {
+        if(i) content += ",";
+        content += String(color_converted[i]);
     }
     content += "]</b></p>";
     server.send(200, "text/html", content);
@@ -422,10 +435,11 @@ void ICACHE_FLASH_ATTR receive_globals()
             auto_increment = autoincrement_to_frames(globals.auto_increment);
         }
         save_globals(&globals);
-        convert_color();
 
         sendDeviceState(server.header("x-Request-Id"));
         server.send(204);
+
+        convert_color();
     }
     else
     {
@@ -658,18 +672,24 @@ void setup()
 
 void loop()
 {
-    server.handleClient();
+    /* We do not want the transition to lag, so we don't handle the client */
+    if(!(flags & FLAG_TRANSITION))
+    {
+        server.handleClient();
+    }
+
     ArduinoOTA.handle();
 
     if(flags & FLAG_NEW_FRAME)
     {
+        flags &= ~FLAG_NEW_FRAME;
         uint8 enabled = 0;
 
         uint16_t virtual_led_offset = 0;
         for(uint8_t d = 0; d < DEVICE_COUNT; ++d)
         {
             uint8_t *p = strip.getPixels() + virtual_led_offset * 3;
-            if(globals.flags[d] & GLOBALS_FLAG_ENABLED)
+            if(globals.flags[d] & GLOBALS_FLAG_ENABLED | flags & FLAG_TRANSITION)
             {
                 enabled = 1;
                 if(globals.flags[d] & GLOBALS_FLAG_EFFECTS)
@@ -680,16 +700,30 @@ void loop()
                                    frames[d], device.args, device.colors, device.color_count, device.color_cycles);
 
 
-                    convert_bufs();
+                    for(uint8_t i = 0; i < virtual_devices[d]; ++i)
+                    {
+                        uint8_t index = i * 3;
+                        set_color_manual(p + index, color_brightness(globals.brightness[d], color_from_buf(p + index)));
+                        p[index] = actual_brightness(p[index]);
+                        p[index + 1] = actual_brightness(p[index + 1]);
+                        p[index + 2] = actual_brightness(p[index + 2]);
+                    }
 
                     strip.show();
-                    flags &= ~FLAG_NEW_FRAME;
                 }
                 else
                 {
+                    uint8_t index = d * 6;
+                    if(transition_frame > TRANSITION_FRAMES && flags & FLAG_TRANSITION)
+                    {
+                        memcpy(color_converted + index + 3, color_converted + index, 3);
+                        flags &= ~FLAG_TRANSITION;
+                    }
+                    uint8_t color[3];
+                    cross_fade(color, color_converted + index, 3, 0, transition_frame * UINT8_MAX / TRANSITION_FRAMES);
                     for(led_count_t i = 0; i < virtual_devices[d]; ++i)
                     {
-                        set_color_manual(p + i * 3, grb(color_from_buf(color_converted)));
+                        set_color_manual(p + i * 3, grb(color_from_buf(color)));
                     }
                     strip.show();
                 }

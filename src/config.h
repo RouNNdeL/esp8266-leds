@@ -6,11 +6,18 @@
 #define WIFICONTROLLER_CONFIG_H
 
 
-#define VERSION_CODE 15
-#define VERSION_NAME "0.5"
+#define VERSION_CODE 16
+#define VERSION_NAME "0.6"
 #define BUILD_DATE (String(__TIME__)+"@" + __DATE__)
 
 #define FPS 100
+#define TRANSITION_FRAMES 50
+
+#if TRANSITION_FRAMES <= 255
+typedef uint8_t transition_t;
+#else
+typedef uint16_t transition_t;
+#endif
 
 #ifndef VIRTUAL_DEVICES
 #define VIRTUAL_DEVICES {60}
