@@ -479,37 +479,9 @@ void ICACHE_FLASH_ATTR receive_profile()
     }
 }
 
-void ICACHE_FLASH_ATTR change_profile()
-{
-    if(server.hasArg("plain") && server.arg("plain").length() == 1 && server.method() == HTTP_POST)
-    {
-        /* We subtract the 1 added previously when creating the webpage */
-        uint8_t i = (uint8_t) server.arg("plain")[0] - 1;
-        if(flags & FLAG_PROFILE_UPDATED)
-        {
-            save_profile(&current_profile, globals.profile_order[globals.n_profile]);
-            flags &= ~FLAG_PROFILE_UPDATED;
-        }
-        globals.n_profile = i;
-        refresh_profile();
-
-        frame = 0;
-        auto_increment = autoincrement_to_frames(globals.auto_increment);
-
-        server.send(200, "application/json", R"({"status": "success"})");
-    }
-    else
-    {
-#if SERIAL_DEBUG
-        server.send(400, "text/html", "<h2>HTTP 400 Invalid Request</h2>");
-#else
-        server.send(400);
-#endif /* SERIAL_DEBUG */
-    }
-}
-
 void ICACHE_FLASH_ATTR handle_root()
 {
+    // TODO: Add seperate pages for each virtual device
     String r = String(globals.color[0], 16);
     String g = String(globals.color[1], 16);
     String b = String(globals.color[2], 16);
@@ -524,12 +496,10 @@ void ICACHE_FLASH_ATTR handle_root()
     for(uint8_t i = 0; i < globals.profile_count; ++i)
     {
         String selected = i == globals.n_profile ? "selected" : "";
-        /* We add 1 to avoid sending a NULL which is a String termination character in C.
-         * The profile_n endpoint will then subtract that 1 to account for that*/
-        content += "<option value=\"" + String(i + 1) + "\" " + selected + ">" + String(globals.profile_order[i]) +
+        content += "<option value=\"" + String(i) + "\" " + selected + ">" + String(globals.profile_order[i]) +
                    "</option>";
     }
-    content += R"(</select><p><a href="/restart">Restart device</a></p><p><a href="/update">Check for updates</a></p> <script>document.getElementById("a").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("PUT","/globals",!0),t.send("??????????"+e.target.value.substring(1)+"*")}),document.getElementById("b").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("PUT","/globals",!0),t.send("????"+("0"+(16).toString(e.target.value)).slice(-2))+"*";)});</script> </body></html>)";
+    content += R"(</select><p><a href="/restart">Restart device</a></p><p><a href="/update">Check for updates</a></p> <script>document.getElementById("a").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("PUT","/globals",!0),t.send("????"+e.target.value.substring(1)+"*")}),document.getElementById("b").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("PUT","/globals",!0),t.send("??????????"+("0"+(16).toString(e.target.value)).slice(-2))+"*";});</script> </body></html>)";
     server.send(200, "text/html", content);
 }
 
