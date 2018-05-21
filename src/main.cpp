@@ -132,11 +132,6 @@ void convert_color()
                 (globals.flags[i] & GLOBALS_FLAG_ENABLED) ? globals.brightness[i] : 0,
                 color_from_buf(globals.color + index)
         ));
-        color_converted[index] = actual_brightness(color_converted[index]);
-        color_converted[index + 1] = actual_brightness(color_converted[index + 1]);
-        color_converted[index + 2] = actual_brightness(color_converted[index + 2]);
-
-
     }
 
     transition_frame = 0;
@@ -668,6 +663,8 @@ void setup()
     ArduinoOTA.begin();
 
     user_init();
+
+    sendDeviceState("");
 }
 
 void loop()
@@ -721,6 +718,9 @@ void loop()
                     }
                     uint8_t color[3];
                     cross_fade(color, color_converted + index, 3, 0, transition_frame * UINT8_MAX / TRANSITION_FRAMES);
+                    color[index] = actual_brightness(color[index]);
+                    color[index + 1] = actual_brightness(color[index + 1]);
+                    color[index + 2] = actual_brightness(color[index + 2]);
                     for(led_count_t i = 0; i < virtual_devices[d]; ++i)
                     {
                         set_color_manual(p + i * 3, grb(color_from_buf(color)));
