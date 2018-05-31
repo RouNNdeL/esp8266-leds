@@ -431,8 +431,9 @@ void ICACHE_FLASH_ATTR receive_globals()
         }
         save_globals(&globals);
 
-        sendDeviceState(server.header("x-Request-Id"));
         server.send(204);
+        sendDeviceState(server.header("x-Request-Id"));
+        sendDeviceState(server.header("x-Request-Id"));
 
         convert_color();
     }
@@ -664,6 +665,8 @@ void setup()
 
     user_init();
 
+    //TODO: Research why almost exactly half of the request do not even get sent
+    sendDeviceState("");
     sendDeviceState("");
 }
 
