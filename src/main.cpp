@@ -198,8 +198,13 @@ int checkUpdate()
     {
         tries++;
         HTTPClient http;
-        http.begin(HTTP_UPDATE_HOST, HTTP_UPDATE_PORT, String(HTTP_UPDATE_URL) + "?device_id=" + DEVICE_ID,
-                   HTTP_UPDATE_HTTPS_FINGERPRINT);
+
+#if HTTP_UPDATE_HTTPS
+        http.begin(HTTP_SERVER_HOST, HTTP_SERVER_PORT_HTTPS, String(HTTP_UPDATE_URL) + "?device_id=" + DEVICE_ID,
+                   HTTP_SERVER_HTTPS_FINGERPRINT);
+#else
+        http.begin(HTTP_SERVER_HOST, HTTP_SERVER_PORT_HTTP, String(HTTP_UPDATE_URL) + "?device_id=" + DEVICE_ID);
+#endif /* HTTP_UPDATE_HTTPS */
         http.useHTTP10(true);
         http.setTimeout(2500);
         http.setUserAgent(F("ESP8266-http-Update"));
@@ -229,11 +234,11 @@ HTTPUpdateResult update(uint8_t reboot)
 #endif /* SERIAL_DEBUG */
     ESPhttpUpdate.rebootOnUpdate(false);
 #if HTTP_UPDATE_HTTPS
-    HTTPUpdateResult ret = ESPhttpUpdate.update(HTTP_UPDATE_HOST, HTTP_UPDATE_PORT,
+    HTTPUpdateResult ret = ESPhttpUpdate.update(HTTP_SERVER_HOST, HTTP_SERVER_PORT_HTTPS,
                                                 String(HTTP_UPDATE_URL) + "?device_id=" + DEVICE_ID,
-                                                String(VERSION_CODE), HTTP_UPDATE_HTTPS_FINGERPRINT);
+                                                String(VERSION_CODE), HTTP_SERVER_HTTPS_FINGERPRINT);
 #else
-    HTTPUpdateResult ret = ESPhttpUpdate.update(HTTP_UPDATE_HOST, HTTP_UPDATE_PORT,
+    HTTPUpdateResult ret = ESPhttpUpdate.update(HTTP_SERVER_HOST, HTTP_SERVER_PORT_HTTP,
                                                 String(HTTP_UPDATE_URL) + "?device_id=" + DEVICE_ID,
                                                 String(VERSION_CODE));
 #endif /* HTTP_UPDATE_HTTPS */
@@ -326,8 +331,12 @@ int sendDeviceState()
     {
         tries++;
         HTTPClient http;
-        http.begin(HTTP_UPDATE_HOST, HTTP_UPDATE_PORT, String(HTTP_STATE_URL),
-                   HTTP_UPDATE_HTTPS_FINGERPRINT);
+#if HTTP_STATE_HTTPS
+        http.begin(HTTP_SERVER_HOST, HTTP_SERVER_PORT_HTTPS, String(HTTP_STATE_URL), HTTP_SERVER_HTTPS_FINGERPRINT);
+#else
+        http.begin(HTTP_SERVER_HOST, HTTP_SERVER_PORT_HTTP, String(HTTP_STATE_URL));
+#endif /* HTTP_UPDATE_HTTPS */
+
         http.setUserAgent(F("ESP8266"));
         http.addHeader(F("Content-Type"), "application/json");
         http.addHeader(F("x-Request-Attempts"), String(tries));
