@@ -34,6 +34,7 @@ global_settings globals;
 /* The first 3 bytes are the current color, the last 3 bytes are the old color to transition from */
 uint8_t color_converted[6 * DEVICE_COUNT] = {};
 volatile transition_t transition_frame;
+String requestId = "";
 
 #define refresh_profile() load_profile(&current_profile, globals.profile_order[globals.n_profile]); \
 convert_all_frames()
@@ -191,24 +192,32 @@ void setStripStatus(uint8_t r, uint8_t g, uint8_t b)
 
 int checkUpdate()
 {
-    HTTPClient http;
-    http.begin(HTTP_UPDATE_HOST, HTTP_UPDATE_PORT, String(HTTP_UPDATE_URL) + "?device_id=" + DEVICE_ID,
-               HTTP_UPDATE_HTTPS_FINGERPRINT);
-    http.useHTTP10(true);
-    http.setTimeout(8000);
-    http.setUserAgent(F("ESP8266-http-Update"));
-    http.addHeader(F("x-ESP8266-STA-MAC"), WiFi.macAddress());
-    http.addHeader(F("x-ESP8266-AP-MAC"), WiFi.softAPmacAddress());
-    http.addHeader(F("x-ESP8266-free-space"), String(ESP.getFreeSketchSpace()));
-    http.addHeader(F("x-ESP8266-sketch-size"), String(ESP.getSketchSize()));
-    http.addHeader(F("x-ESP8266-sketch-md5"), String(ESP.getSketchMD5()));
-    http.addHeader(F("x-ESP8266-chip-size"), String(ESP.getFlashChipRealSize()));
-    http.addHeader(F("x-ESP8266-sdk-version"), ESP.getSdkVersion());
-    http.addHeader(F("x-ESP8266-mode"), F("check"));
-    http.addHeader(F("x-ESP8266-version"), String(VERSION_CODE));
+    int code;
+    uint8_t tries = 0;
+    do
+    {
+        tries++;
+        HTTPClient http;
+        http.begin(HTTP_UPDATE_HOST, HTTP_UPDATE_PORT, String(HTTP_UPDATE_URL) + "?device_id=" + DEVICE_ID,
+                   HTTP_UPDATE_HTTPS_FINGERPRINT);
+        http.useHTTP10(true);
+        http.setTimeout(2500);
+        http.setUserAgent(F("ESP8266-http-Update"));
+        http.addHeader(F("x-Request-Attempts"), String(tries));
+        http.addHeader(F("x-ESP8266-STA-MAC"), WiFi.macAddress());
+        http.addHeader(F("x-ESP8266-AP-MAC"), WiFi.softAPmacAddress());
+        http.addHeader(F("x-ESP8266-free-space"), String(ESP.getFreeSketchSpace()));
+        http.addHeader(F("x-ESP8266-sketch-size"), String(ESP.getSketchSize()));
+        http.addHeader(F("x-ESP8266-sketch-md5"), String(ESP.getSketchMD5()));
+        http.addHeader(F("x-ESP8266-chip-size"), String(ESP.getFlashChipRealSize()));
+        http.addHeader(F("x-ESP8266-sdk-version"), ESP.getSdkVersion());
+        http.addHeader(F("x-ESP8266-mode"), F("check"));
+        http.addHeader(F("x-ESP8266-version"), String(VERSION_CODE));
 
-    int code = http.GET();
-    http.end();
+        code = http.GET();
+        http.end();
+    }
+    while((code == -1 || code == -11) && tries < REQUEST_RETIRES);
     return code;
 }
 
@@ -296,8 +305,8 @@ String getDeviceJson()
     String content = R"({"ap_name":")" + String(AP_NAME) +
                      R"(","version_code":)" + String(VERSION_CODE) +
                      R"(,"version_name":")" + String(VERSION_NAME) +
-                     R"(","device_id":)" + String(DEVICE_ID) +
-                     ",\"auto_increment\":" + String(auto_increment / FPS) +
+                     R"(","device_id":")" + DEVICE_ID +
+                     "\",\"auto_increment\":" + String(auto_increment / FPS) +
                      ",\"current_profile\":" + String(globals.n_profile) +
                      ",\"color\":" + color_array +
                      ",\"flags\":" + flags_array +
@@ -309,22 +318,28 @@ String getDeviceJson()
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wconversion"
 
-uint8_t sendDeviceState(const String &requestId)
+int sendDeviceState()
 {
-    HTTPClient http;
-    http.begin(HTTP_UPDATE_HOST, HTTP_UPDATE_PORT, String(HTTP_STATE_URL),
-               HTTP_UPDATE_HTTPS_FINGERPRINT);
-    http.useHTTP10(true);
-    http.setTimeout(500);
-    http.setUserAgent(F("ESP8266"));
-    http.addHeader(F("Content-Type"), "application/json");
+    int code;
+    uint8_t tries = 0;
+    do
+    {
+        tries++;
+        HTTPClient http;
+        http.begin(HTTP_UPDATE_HOST, HTTP_UPDATE_PORT, String(HTTP_STATE_URL),
+                   HTTP_UPDATE_HTTPS_FINGERPRINT);
+        http.setUserAgent(F("ESP8266"));
+        http.addHeader(F("Content-Type"), "application/json");
+        http.addHeader(F("x-Request-Attempts"), String(tries));
 
-    if(requestId.length() > 0 && requestId[0] != 0x00)
-        http.addHeader(F("x-Request-Id"), requestId);
+        if(requestId.length() > 0 && requestId[0] != 0x00)
+            http.addHeader(F("x-Request-Id"), requestId);
 
 
-    int code = http.POST(getDeviceJson());
-    http.end();
+        code = http.POST(getDeviceJson());
+        http.end();
+    }
+    while((code == -1 || code == -11) && tries < REQUEST_RETIRES);
     return code;
 }
 
@@ -432,9 +447,7 @@ void ICACHE_FLASH_ATTR receive_globals()
         save_globals(&globals);
 
         server.send(204);
-        sendDeviceState(server.header("x-Request-Id"));
-        sendDeviceState(server.header("x-Request-Id"));
-
+        requestId = server.header("x-Request-Id");
         convert_color();
     }
     else
@@ -633,7 +646,7 @@ void setup()
     manager.setConfigPortalTimeout(300);
     manager.autoConnect(AP_NAME);
 
-    update(1);
+    if(checkUpdate() == HTTP_CODE_OK) update(1);
 
 #if SERIAL_DEBUG
     Serial.println("|---------------------------|");
@@ -664,10 +677,6 @@ void setup()
     ArduinoOTA.begin();
 
     user_init();
-
-    //TODO: Research why almost exactly half of the request do not even get sent
-    sendDeviceState("");
-    sendDeviceState("");
 }
 
 void loop()
@@ -714,11 +723,6 @@ void loop()
                 else
                 {
                     uint8_t index = d * 6;
-                    if(transition_frame > TRANSITION_FRAMES && flags & FLAG_TRANSITION)
-                    {
-                        memcpy(color_converted + index + 3, color_converted + index, 3);
-                        flags &= ~FLAG_TRANSITION;
-                    }
                     uint8_t color[3];
                     cross_fade(color, color_converted + index, 3, 0, transition_frame * UINT8_MAX / TRANSITION_FRAMES);
                     color[index] = actual_brightness(color[index]);
@@ -729,6 +733,13 @@ void loop()
                         set_color_manual(p + i * 3, grb(color_from_buf(color)));
                     }
                     strip.show();
+
+                    if(transition_frame >= TRANSITION_FRAMES && flags & FLAG_TRANSITION)
+                    {
+                        memcpy(color_converted + index + 3, color_converted + index, 3);
+                        flags &= ~FLAG_TRANSITION;
+                        sendDeviceState();
+                    }
                 }
             }
             else

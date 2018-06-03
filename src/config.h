@@ -9,6 +9,7 @@
 #define VERSION_CODE 18
 #define VERSION_NAME "0.61.1"
 #define BUILD_DATE (String(__TIME__)+"@" + __DATE__)
+#define REQUEST_RETIRES 10
 
 #define FPS 100
 #define TRANSITION_FRAMES 50
@@ -37,7 +38,7 @@ typedef uint16_t transition_t;
 #endif /* AP_NAME */
 
 #ifndef DEVICE_ID
-#define DEVICE_ID 0
+#define DEVICE_ID "iot_0"
 #endif /* DEVICE_ID */
 
 #ifndef CONFIG_PAGE
