@@ -129,10 +129,8 @@ void convert_color()
         uint8_t index = i * 6;
         /* Copy the now old color to its place (3 bytes after the new) */
         memcpy(color_converted + index + 3, color_converted + index, 3);
-        set_color_manual(color_converted, color_brightness(
-                (globals.flags[i] & GLOBALS_FLAG_ENABLED) ? globals.brightness[i] : 0,
-                color_from_buf(globals.color + index)
-        ));
+        uint8_t brightness = (globals.flags[i] & GLOBALS_FLAG_ENABLED) ? globals.brightness[i] : 0;
+        set_color_manual(color_converted + index, color_brightness(brightness, color_from_buf(globals.color + i * 3)));
     }
 
     transition_frame = 0;
@@ -174,19 +172,26 @@ uint8_t char2int(char input)
 
 void setStripStatus(uint8_t r, uint8_t g, uint8_t b)
 {
-    for(uint8_t i = 0; i < DEVICE_COUNT; ++i)
+    led_count_t virtual_led_offset = 0;
+    for(uint8_t d = 0; d < DEVICE_COUNT; ++d)
     {
-        if(!(globals.flags[i] & GLOBALS_FLAG_STATUSES))
+        uint8_t *p = strip.getPixels() + virtual_led_offset * 3;
+        if(!(globals.flags[d] & GLOBALS_FLAG_STATUSES))
             return;
         strip.setBrightness(UINT8_MAX);
-        for(led_count_t j = 0; j < virtual_devices[i]; ++j)
+        for(led_count_t j = 0; j < virtual_devices[d]; ++j)
         {
             if(j % 4)
-                strip.setPixelColor(j, color_brightness(12, r, g, b));
+            {
+                set_color_manual(p, grb(color_brightness(12, r, g, b)));
+            }
             else
-                strip.setPixelColor(j, r, g, b);
+            {
+                set_color_manual(p, grb(r, g, b));
+            }
         }
         strip.show();
+        virtual_led_offset += virtual_devices[d];
     }
 }
 
@@ -301,7 +306,12 @@ String getDeviceJson()
 
         brightness_array += String(globals.brightness[i]);
         flags_array += String(globals.flags[i]);
-        color_array += String((uint32_t) globals.color[0] << 16 | (uint16_t) globals.color[1] << 8 | globals.color[2]);
+        uint8_t index = i * 3;
+        color_array += String(
+                (uint32_t) globals.color[index] << 16 |
+                (uint16_t) globals.color[index + 1] << 8 |
+                globals.color[index + 2]
+        );
     }
     brightness_array += "]";
     flags_array += "]";
@@ -406,7 +416,9 @@ void ICACHE_FLASH_ATTR debug_info()
     content += "<p>color_converted: <b>[";
     for(uint8_t i = 0; i < sizeof(color_converted); i++)
     {
-        if(i) content += ",";
+        if(!(i % 6) && i) content += "], [";
+        else if(!(i % 3) && i) content += " | ";
+        else if(i % 6) content += ",";
         content += String(color_converted[i]);
     }
     content += "]</b></p>";
@@ -618,6 +630,7 @@ void recover()
 
     save_globals(&globals);
     save_profile(&current_profile, 0);
+    convert_color();
 }
 
 void setup()
@@ -637,11 +650,10 @@ void setup()
     Serial.println("Device Id: " + String(DEVICE_ID));
 #endif /* SERIAL_DEBUG */
 
-#if RECOVER
-    recover();
-#else
-    eeprom_init();
-#endif /* RECOVER */
+    if(ESP.getResetInfoPtr()->reason == REASON_EXCEPTION_RST)
+        recover();
+    else
+        eeprom_init();
 
     strip.begin();
     setStripStatus(COLOR_RED);
@@ -703,7 +715,7 @@ void loop()
         flags &= ~FLAG_NEW_FRAME;
         uint8 enabled = 0;
 
-        uint16_t virtual_led_offset = 0;
+        led_count_t virtual_led_offset = 0;
         for(uint8_t d = 0; d < DEVICE_COUNT; ++d)
         {
             uint8_t *p = strip.getPixels() + virtual_led_offset * 3;
@@ -742,13 +754,6 @@ void loop()
                         set_color_manual(p + i * 3, grb(color_from_buf(color)));
                     }
                     strip.show();
-
-                    if(transition_frame >= TRANSITION_FRAMES && flags & FLAG_TRANSITION)
-                    {
-                        memcpy(color_converted + index + 3, color_converted + index, 3);
-                        flags &= ~FLAG_TRANSITION;
-                        sendDeviceState();
-                    }
                 }
             }
             else
@@ -761,6 +766,18 @@ void loop()
             }
 
             virtual_led_offset += virtual_devices[d];
+        }
+
+
+        if(transition_frame >= TRANSITION_FRAMES && flags & FLAG_TRANSITION)
+        {
+            for(uint8_t i = 0; i < DEVICE_COUNT; ++i)
+            {
+                uint8_t index = i*6;
+                memcpy(color_converted + index + 3, color_converted + index, 3);
+            }
+            flags &= ~FLAG_TRANSITION;
+            sendDeviceState();
         }
 
         if(auto_increment && frame && frame % auto_increment == 0 && enabled && globals.profile_count > 1)
