@@ -35,3 +35,18 @@ void save_globals(global_settings *globals)
     }
     EEPROM.commit();
 }
+
+uint8_t get_reset_count()
+{
+    return EEPROM.read(RESET_ADDRESS);
+}
+
+uint8_t set_reset_count(uint8_t count)
+{
+    EEPROM.write(RESET_ADDRESS, count);
+}
+
+uint8_t increase_reset_count()
+{
+    set_reset_count(get_reset_count()+1);
+}

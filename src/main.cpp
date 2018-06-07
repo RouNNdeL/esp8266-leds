@@ -21,6 +21,10 @@ ESP8266WebServer server(80);
 #define FLAG_NEW_FRAME (1 << 0)
 #define FLAG_PROFILE_UPDATED (1 << 1)
 #define FLAG_TRANSITION (1 << 2)
+#define FLAG_HALT (1 << 7)
+
+#define not_halt() !(flags & FLAG_HALT)
+#define halt() flags & FLAG_HALT
 
 os_timer_t frameTimer;
 volatile uint32_t frame;
@@ -152,7 +156,6 @@ void user_init()
 
 void eeprom_init()
 {
-    EEPROM.begin(SPI_FLASH_SEC_SIZE);
     load_globals(&globals);
     auto_increment = autoincrement_to_frames(globals.auto_increment);
     refresh_profile();
@@ -195,9 +198,9 @@ void setStripStatus(uint8_t r, uint8_t g, uint8_t b)
     }
 }
 
-int checkUpdate()
+int32_t checkUpdate()
 {
-    int code;
+    int32_t code;
     uint8_t tries = 0;
     do
     {
@@ -333,9 +336,9 @@ String getDeviceJson()
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wconversion"
 
-int sendDeviceState()
+int32_t sendDeviceState()
 {
-    int code;
+    int32_t code;
     uint8_t tries = 0;
     do
     {
@@ -363,6 +366,31 @@ int sendDeviceState()
 }
 
 #pragma clang diagnostic pop
+
+int32_t sendDeviceHalted()
+{
+    int32_t code;
+    uint8_t tries = 0;
+    do
+    {
+        tries++;
+        HTTPClient http;
+#if HTTP_HALT_HTTPS
+        http.begin(HTTP_SERVER_HOST, HTTP_SERVER_PORT_HTTPS, String(HTTP_HALT_URL), HTTP_SERVER_HTTPS_FINGERPRINT);
+#else
+        http.begin(HTTP_SERVER_HOST, HTTP_SERVER_PORT_HTTP, String(HTTP_HALT_URL));
+#endif /* HTTP_UPDATE_HTTPS */
+
+        http.setUserAgent(F("ESP8266"));
+        http.addHeader(F("Content-Type"), "application/json");
+        http.addHeader(F("x-Request-Attempts"), String(tries));
+
+        code = http.POST(getDeviceJson());
+        http.end();
+    }
+    while((code == -1 || code == -11) && tries < REQUEST_RETIRES);
+    return code;
+}
 
 #if PAGE_DEBUG
 
@@ -432,7 +460,7 @@ void ICACHE_FLASH_ATTR receive_globals()
     if(server.hasArg("plain") &&
        server.method() == HTTP_PUT &&
        (server.arg("plain").length() == GLOBALS_SIZE * 2 ||
-        (server.arg("plain").length() < GLOBALS_SIZE &&
+        (server.arg("plain").length() < GLOBALS_SIZE * 2 &&
          server.arg("plain").end()[-1] == '*')))
     {
         uint8_t bytes[GLOBALS_SIZE];
@@ -598,8 +626,6 @@ void configModeCallback(WiFiManager *myWiFiManager)
 
 void recover()
 {
-    EEPROM.begin(SPI_FLASH_SEC_SIZE);
-
     for(uint8_t i = 0; i < DEVICE_COUNT; ++i)
     {
         globals.brightness[i] = 0xff;
@@ -650,13 +676,30 @@ void setup()
     Serial.println("Device Id: " + String(DEVICE_ID));
 #endif /* SERIAL_DEBUG */
 
+    EEPROM.begin(SPI_FLASH_SEC_SIZE);
     if(ESP.getResetInfoPtr()->reason == REASON_EXCEPTION_RST)
-        recover();
+    {
+        increase_reset_count();
+        if(get_reset_count() > RECOVERY_ATTEMPTS)
+        {
+            flags |= FLAG_HALT;
+        }
+        else
+        {
+            recover();
+        }
+    }
     else
+    {
         eeprom_init();
+        set_reset_count(0);
+    }
 
-    strip.begin();
-    setStripStatus(COLOR_RED);
+    if(not_halt())
+    {
+        strip.begin();
+        setStripStatus(COLOR_RED);
+    }
 
     WiFiManager manager;
 #if !SERIAL_DEBUG
@@ -667,7 +710,7 @@ void setup()
     manager.setConfigPortalTimeout(300);
     manager.autoConnect(AP_NAME);
 
-    if(checkUpdate() == HTTP_CODE_OK) update(1);
+    if(not_halt() && checkUpdate() == HTTP_CODE_OK) update(1);
 
 #if SERIAL_DEBUG
     Serial.println("|---------------------------|");
@@ -681,34 +724,43 @@ void setup()
 
     WiFi.onStationModeDisconnected(on_disconnected);
 
-    server.on("/", handle_root);
-    server.on("/restart", restart);
-    server.on("/config", redirect_to_config);
-    server.on("/globals", receive_globals);
-    server.on("/profile", receive_profile);
-    server.on("/api", send_json);
-    server.on("/update", manual_update_check);
-    server.on("/apply_update", apply_update);
+    if(not_halt())
+    {
+        server.on("/", handle_root);
+        server.on("/restart", restart);
+        server.on("/config", redirect_to_config);
+        server.on("/globals", receive_globals);
+        server.on("/profile", receive_profile);
+        server.on("/api", send_json);
+        server.on("/update", manual_update_check);
+        server.on("/apply_update", apply_update);
 
-    const char *headers[] = {"x-Request-Id"};
-    size_t headers_size = sizeof(headers) / sizeof(char *);
-    server.collectHeaders(headers, headers_size);
+        const char *headers[] = {"x-Request-Id"};
+        size_t headers_size = sizeof(headers) / sizeof(char *);
+        server.collectHeaders(headers, headers_size);
 
-    server.begin();
+        server.begin();
+        user_init();
+    }
+    else
+    {
+        sendDeviceHalted();
+    }
+
     ArduinoOTA.begin();
-
-    user_init();
 }
 
 void loop()
 {
+    ArduinoOTA.handle();
+
+    if(halt())
+        return;
     /* We do not want the transition to lag, so we don't handle the client */
     if(!(flags & FLAG_TRANSITION))
     {
         server.handleClient();
     }
-
-    ArduinoOTA.handle();
 
     if(flags & FLAG_NEW_FRAME)
     {
@@ -773,7 +825,7 @@ void loop()
         {
             for(uint8_t i = 0; i < DEVICE_COUNT; ++i)
             {
-                uint8_t index = i*6;
+                uint8_t index = i * 6;
                 memcpy(color_converted + index + 3, color_converted + index, 3);
             }
             flags &= ~FLAG_TRANSITION;

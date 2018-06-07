@@ -10,6 +10,7 @@
 #define VERSION_NAME "0.62"
 #define BUILD_DATE (String(__TIME__)+"@" + __DATE__)
 #define REQUEST_RETIRES 10
+#define RECOVERY_ATTEMPTS 5
 
 #define FPS 100
 #define TRANSITION_FRAMES 50
@@ -56,6 +57,9 @@ typedef uint16_t transition_t;
 #define HTTP_STATE_HTTPS 1
 #define HTTP_STATE_URL "/api/local/esp_report_state.php"
 
+#define HTTP_HALT_HTTPS 1
+#define HTTP_HALT_URL "/api/local/esp_report_halt.php"
+
 #define UDP_DISCOVERY_MSG "ROUNDEL_IOT_DISCOVERY"
 #define UDP_DISCOVERY_RESPONSE "ROUNDEL_IOT_RESPONSE"
 
@@ -77,7 +81,5 @@ typedef uint16_t transition_t;
 #ifndef PAGE_DEBUG
 #define PAGE_DEBUG 1
 #endif /* PAGE_DEBUG */
-
-#define RECOVER 1
 
 #endif //WIFICONTROLLER_CONFIG_H

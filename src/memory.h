@@ -40,6 +40,12 @@ void save_globals(global_settings *globals);
 
 void save_profile(profile *p, uint8_t n);
 
+uint8_t get_reset_count();
+
+uint8_t set_reset_count(uint8_t count);
+
+uint8_t increase_reset_count();
+
 #define GLOBALS_FLAG_ENABLED (1 << 0)
 #define GLOBALS_FLAG_STATUSES (1 << 1)
 #define GLOBALS_FLAG_EFFECTS (1 << 2)
@@ -50,5 +56,6 @@ void save_profile(profile *p, uint8_t n);
 
 #define GLOBALS_ADDRESS 0
 #define PROFILE_ADDRESS(n) GLOBALS_ADDRESS + GLOBALS_SIZE + PROFILE_SIZE * n
+#define RESET_ADDRESS PROFILE_ADDRESS(PROFILE_COUNT)
 
 #endif //WIFICONTROLLER_EEPROM_H
