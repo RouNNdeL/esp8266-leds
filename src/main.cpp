@@ -570,7 +570,7 @@ void ICACHE_FLASH_ATTR handle_root()
         content += "<option value=\"" + String(i) + "\" " + selected + ">" + String(globals.profile_order[i]) +
                    "</option>";
     }
-    content += R"(</select><p><a href="/restart">Restart device</a></p><p><a href="/update">Check for updates</a></p> <script>document.getElementById("a").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("PUT","/globals",!0),t.send("????"+e.target.value.substring(1)+"*")}),document.getElementById("b").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("PUT","/globals",!0),t.send("??????????"+("0"+(16).toString(e.target.value)).slice(-2))+"*";});</script> </body></html>)";
+    content += R"(</select><p><a href="/restart">Restart device</a></p><p><a href="/update">Check for updates</a></p> <script>document.getElementById("a").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("PUT","/globals",!0),t.send("????".repeat()"+String(DEVICE_COUNT)+R"()+e.target.value.substring(1).repeat()"+String(DEVICE_COUNT)+R"()+"*")}),document.getElementById("b").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("PUT","/globals",!0),t.send("??????????"+("0"+(16).toString(e.target.value)).slice(-2))+"*";});</script> </body></html>)";
     server.send(200, "text/html", content);
 }
 
