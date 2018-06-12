@@ -126,19 +126,30 @@ uint32_t autoincrement_to_frames(uint8_t time)
     return 21600 * FPS;
 }
 
-void convert_color()
+void convert_color(uint8_t transition)
 {
     for(uint8_t i = 0; i < DEVICE_COUNT; ++i)
     {
         uint8_t index = i * 6;
-        /* Copy the now old color to its place (3 bytes after the new) */
-        memcpy(color_converted + index + 3, color_converted + index, 3);
+        if(transition)
+        {
+            /* Copy the now old color to its place (3 bytes after the new) */
+            memcpy(color_converted + index + 3, color_converted + index, 3);
+        }
         uint8_t brightness = (globals.flags[i] & GLOBALS_FLAG_ENABLED) ? globals.brightness[i] : 0;
         set_color_manual(color_converted + index, color_brightness(brightness, color_from_buf(globals.color + i * 3)));
+        if(!transition)
+        {
+            set_color_manual(color_converted + index + 3,
+                             color_brightness(brightness, color_from_buf(globals.color + i * 3)));
+        }
     }
 
-    transition_frame = 0;
-    flags |= FLAG_TRANSITION;
+    if(transition)
+    {
+        transition_frame = 0;
+        flags |= FLAG_TRANSITION;
+    }
 }
 
 void timerCallback(void *pArg)
@@ -159,7 +170,7 @@ void eeprom_init()
     load_globals(&globals);
     auto_increment = autoincrement_to_frames(globals.auto_increment);
     refresh_profile();
-    convert_color();
+    convert_color(0);
 }
 
 uint8_t char2int(char input)
@@ -460,25 +471,27 @@ void ICACHE_FLASH_ATTR receive_globals()
     if(server.hasArg("plain") &&
        server.method() == HTTP_PUT &&
        (server.arg("plain").length() == GLOBALS_SIZE * 2 ||
-        (server.arg("plain").length() < GLOBALS_SIZE * 2 &&
-         server.arg("plain").end()[-1] == '*')))
+        (server.arg("plain").length() < GLOBALS_SIZE * 2 && server.arg("plain").end()[-1] == '*') ||
+        (server.arg("plain").length() <= GLOBALS_SIZE * 2 + 1 && server.arg("plain")[0] == 'q')))
     {
         uint8_t bytes[GLOBALS_SIZE];
+        uint8_t quick = server.arg("plain")[0] == 'q' ? 1 : 0;
         auto c = server.arg("plain");
         for(uint8_t i = 0; i < GLOBALS_SIZE; ++i)
         {
-            if(c[i * 2] == '*' || c[i * 2 + 1] == '*')
+            uint8_t j = i * 2 + quick;
+            if(c[j] == '*' || c[j + 1] == '*')
             {
                 memcpy(bytes + i, ((uint8_t *) &globals) + i, GLOBALS_SIZE - i);
                 break;
             }
-            if(c[i * 2] == '?' && c[i * 2 + 1] == '?')
+            if(c[j] == '?' && c[j + 1] == '?')
             {
                 bytes[i] = ((uint8_t *) &globals)[i];
             }
             else
             {
-                bytes[i] = char2int(c[i * 2]) * 16 + char2int(c[i * 2 + 1]);
+                bytes[i] = char2int(c[j]) * 16 + char2int(c[j + 1]);
             }
         }
         uint8_t previous_profile = globals.profile_order[globals.n_profile];
@@ -497,7 +510,7 @@ void ICACHE_FLASH_ATTR receive_globals()
 
         server.send(204);
         requestId = server.header("x-Request-Id");
-        convert_color();
+        convert_color(!quick);
     }
     else
     {
@@ -570,7 +583,10 @@ void ICACHE_FLASH_ATTR handle_root()
         content += "<option value=\"" + String(i) + "\" " + selected + ">" + String(globals.profile_order[i]) +
                    "</option>";
     }
-    content += R"(</select><p><a href="/restart">Restart device</a></p><p><a href="/update">Check for updates</a></p> <script>document.getElementById("a").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("PUT","/globals",!0),t.send("????".repeat()"+String(DEVICE_COUNT)+R"()+e.target.value.substring(1).repeat()"+String(DEVICE_COUNT)+R"()+"*")}),document.getElementById("b").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("PUT","/globals",!0),t.send("??????????"+("0"+(16).toString(e.target.value)).slice(-2))+"*";});</script> </body></html>)";
+    content +=
+            R"(</select><p><a href="/restart">Restart device</a></p><p><a href="/update">Check for updates</a></p> <script>document.getElementById("a").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("PUT","/globals",!0),t.send("????".repeat()" +
+            String(DEVICE_COUNT) + R"()+e.target.value.substring(1).repeat()" + String(DEVICE_COUNT) +
+            R"()+"*")}),document.getElementById("b").addEventListener("change",function(e){var t=new XMLHttpRequest;t.open("PUT","/globals",!0),t.send("??????????"+("0"+(16).toString(e.target.value)).slice(-2))+"*";});</script> </body></html>)";
     server.send(200, "text/html", content);
 }
 
@@ -656,7 +672,7 @@ void recover()
 
     save_globals(&globals);
     save_profile(&current_profile, 0);
-    convert_color();
+    convert_color(0);
 }
 
 void setup()
