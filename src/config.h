@@ -6,16 +6,17 @@
 #define WIFICONTROLLER_CONFIG_H
 
 
-#define VERSION_CODE 20
-#define VERSION_NAME "0.7"
+#define VERSION_CODE 21
+#define VERSION_NAME "0.71"
 #define BUILD_DATE (String(__TIME__)+"@" + __DATE__)
 #define REQUEST_RETIRES 10
 #define RECOVERY_ATTEMPTS 5
 
 #define FPS 100
 #define TRANSITION_FRAMES 50
+#define TRANSITION_QUICK_FRAMES 50
 
-#if TRANSITION_FRAMES <= 255
+#if TRANSITION_FRAMES <= 255 && TRANSITION_QUICK_FRAMES <= 255
 typedef uint8_t transition_t;
 #else
 typedef uint16_t transition_t;

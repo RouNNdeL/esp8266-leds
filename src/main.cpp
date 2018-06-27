@@ -21,6 +21,7 @@ ESP8266WebServer server(80);
 #define FLAG_NEW_FRAME (1 << 0)
 #define FLAG_PROFILE_UPDATED (1 << 1)
 #define FLAG_TRANSITION (1 << 2)
+#define FLAG_QUICK_TRANSITION (1 << 3)
 #define FLAG_HALT (1 << 7)
 
 #define not_halt() !(flags & FLAG_HALT)
@@ -38,6 +39,7 @@ global_settings globals;
 /* The first 3 bytes are the current color, the last 3 bytes are the old color to transition from */
 uint8_t color_converted[6 * DEVICE_COUNT] = {};
 volatile transition_t transition_frame;
+transition_t transition_frames;
 String requestId = "";
 
 #define refresh_profile() load_profile(&current_profile, globals.profile_order[globals.n_profile]); \
@@ -126,30 +128,27 @@ uint32_t autoincrement_to_frames(uint8_t time)
     return 21600 * FPS;
 }
 
-void convert_color(uint8_t transition)
+void convert_color()
 {
     for(uint8_t i = 0; i < DEVICE_COUNT; ++i)
     {
         uint8_t index = i * 6;
-        if(transition)
-        {
-            /* Copy the now old color to its place (3 bytes after the new) */
-            memcpy(color_converted + index + 3, color_converted + index, 3);
-        }
+
+        /* Copy the now old color to its place (3 bytes after the new) */
+        memcpy(color_converted + index + 3, color_converted + index, 3);
+
         uint8_t brightness = (globals.flags[i] & GLOBALS_FLAG_ENABLED) ? globals.brightness[i] : 0;
         set_color_manual(color_converted + index, color_brightness(brightness, color_from_buf(globals.color + i * 3)));
-        if(!transition)
-        {
-            set_color_manual(color_converted + index + 3,
-                             color_brightness(brightness, color_from_buf(globals.color + i * 3)));
-        }
-    }
+        color_brightness(brightness, color_from_buf(globals.color + i * 3));
 
-    if(transition)
-    {
-        transition_frame = 0;
-        flags |= FLAG_TRANSITION;
     }
+    transition_frame = 0;
+    if(flags & FLAG_QUICK_TRANSITION)
+        transition_frames = TRANSITION_QUICK_FRAMES;
+    else
+        transition_frames = TRANSITION_FRAMES;
+    flags |= FLAG_TRANSITION;
+
 }
 
 void timerCallback(void *pArg)
@@ -170,7 +169,7 @@ void eeprom_init()
     load_globals(&globals);
     auto_increment = autoincrement_to_frames(globals.auto_increment);
     refresh_profile();
-    convert_color(0);
+    convert_color();
 }
 
 uint8_t char2int(char input)
@@ -510,7 +509,8 @@ void ICACHE_FLASH_ATTR receive_globals()
 
         server.send(204);
         requestId = server.header("x-Request-Id");
-        convert_color(!quick);
+        quick ? (flags |= FLAG_QUICK_TRANSITION) : (flags &= ~FLAG_QUICK_TRANSITION);
+        convert_color();
     }
     else
     {
@@ -672,7 +672,7 @@ void recover()
 
     save_globals(&globals);
     save_profile(&current_profile, 0);
-    convert_color(0);
+    convert_color();
 }
 
 void setup()
@@ -773,7 +773,7 @@ void loop()
     if(halt())
         return;
     /* We do not want the transition to lag, so we don't handle the client */
-    if(!(flags & FLAG_TRANSITION))
+    if(!(flags & FLAG_TRANSITION) || flags & FLAG_QUICK_TRANSITION)
     {
         server.handleClient();
     }
@@ -813,7 +813,7 @@ void loop()
                 {
                     uint8_t index = d * 6;
                     uint8_t color[3];
-                    cross_fade(color, color_converted + index, 3, 0, transition_frame * UINT8_MAX / TRANSITION_FRAMES);
+                    cross_fade(color, color_converted + index, 3, 0, transition_frame * UINT8_MAX / transition_frames);
                     color[index] = actual_brightness(color[index]);
                     color[index + 1] = actual_brightness(color[index + 1]);
                     color[index + 2] = actual_brightness(color[index + 2]);
@@ -837,7 +837,7 @@ void loop()
         }
 
 
-        if(transition_frame >= TRANSITION_FRAMES && flags & FLAG_TRANSITION)
+        if(transition_frame >= transition_frames && flags & FLAG_TRANSITION)
         {
             for(uint8_t i = 0; i < DEVICE_COUNT; ++i)
             {
@@ -845,7 +845,8 @@ void loop()
                 memcpy(color_converted + index + 3, color_converted + index, 3);
             }
             flags &= ~FLAG_TRANSITION;
-            sendDeviceState();
+            if(!(flags & FLAG_QUICK_TRANSITION))
+                sendDeviceState();
         }
 
         if(auto_increment && frame && frame % auto_increment == 0 && enabled && globals.profile_count > 1)
