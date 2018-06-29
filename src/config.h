@@ -50,7 +50,7 @@ typedef uint16_t transition_t;
 #define HTTP_SERVER_HOST "home.zdul.xyz"
 #define HTTP_SERVER_PORT_HTTP 80
 #define HTTP_SERVER_PORT_HTTPS 443
-#define HTTP_SERVER_HTTPS_FINGERPRINT "f8 0c f7 57 6c ca 1f e9 51 8f 21 7a 8f 43 0c 9c 7c 28 2c 50"
+#define HTTP_SERVER_HTTPS_FINGERPRINT "16 32 09 61 08 56 fa 41 c2 ad 0c 25 08 2a 06 1d 67 1d 55 fb"
 
 #define HTTP_UPDATE_HTTPS 1
 #define HTTP_UPDATE_URL "/api/esp_update.php"
