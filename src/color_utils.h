@@ -6,6 +6,7 @@
 #define actual_brightness(brightness) scale8(brightness, brightness)
 
 #define ARG_BIT_PACK 0
+#define ARG_COLOR_CYCLES 5
 
 #define DIRECTION_BIT 0
 #define SMOOTH_BIT 1
@@ -127,10 +128,10 @@ void rotate_buf(uint8_t *leds, uint8_t led_count, uint16_t rotation_progress, ui
                 uint8_t bit_pack, uint8_t *colors, uint8_t color_count);
 
 void simple_effect(effect effect, uint8_t *color, uint32_t frame, uint16_t *times, uint8_t *args, uint8_t *colors,
-                   uint8_t color_count, uint8_t color_cycles, uint8_t grb);
+                   uint8_t color_count, uint8_t grb);
 
 void digital_effect(effect effect, uint8_t *leds, uint8_t led_count, uint8_t start_led, uint32_t frame, uint16_t *times,
-                    uint8_t *args, uint8_t *colors, uint8_t color_count, uint8_t color_cycles);
+                    uint8_t *args, uint8_t *colors, uint8_t color_count);
 
 uint8_t demo_music(uint8_t *fan_buf, uint8_t *pc_buf, uint8_t *gpu_buf, uint32_t frame);
 

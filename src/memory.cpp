@@ -2,19 +2,19 @@
 #include <EEPROM.h>
 #include <HardwareSerial.h>
 
-void load_profile(profile *p, uint8_t n)
+void load_device(device_profile *p, uint8_t d, uint8_t n)
 {
-    for(uint8_t t = 0; t < PROFILE_SIZE; t++)
+    for(uint8_t t = 0; t < DEVICE_SIZE; t++)
     {
-        *((uint8_t *) p + t) = EEPROM.read(PROFILE_ADDRESS(n) + t);
+        *((uint8_t *) p + t) = EEPROM.read(DEVICE_ADDRESS(d, n) + t);
     }
 }
 
-void save_profile(profile *p, uint8_t n)
+void save_profile(device_profile *p, uint8_t d, uint8_t n)
 {
-    for(uint8_t t = 0; t < PROFILE_SIZE; t++)
+    for(uint8_t t = 0; t < DEVICE_SIZE; t++)
     {
-        EEPROM.write(PROFILE_ADDRESS(n) + t, *((uint8_t *) p + t));
+        EEPROM.write(DEVICE_ADDRESS(d, n) + t, *((uint8_t *) p + t));
     }
     EEPROM.commit();
 }
