@@ -6,15 +6,15 @@
 #define WIFICONTROLLER_CONFIG_H
 
 
-#define VERSION_CODE 21
-#define VERSION_NAME "0.71"
+#define VERSION_CODE 22
+#define VERSION_NAME "1.0"
 #define BUILD_DATE (String(__TIME__)+"@" + __DATE__)
 #define REQUEST_RETIRES 10
 #define RECOVERY_ATTEMPTS 5
 
 #define FPS 100
 #define TRANSITION_FRAMES 50
-#define TRANSITION_QUICK_FRAMES 50
+#define TRANSITION_QUICK_FRAMES 35
 
 #if TRANSITION_FRAMES <= 255 && TRANSITION_QUICK_FRAMES <= 255
 typedef uint8_t transition_t;
@@ -68,12 +68,16 @@ typedef uint16_t transition_t;
 #define PROFILE_COUNT 24
 #endif /* PROFILE_COUNT */
 
+#ifndef DEVICE_PROFILE_COUNT
+#define DEVICE_PROFILE_COUNT 24
+#endif /* DEVICE_PROFILE_COUNT */
+
 #ifndef DEVICE_COUNT
 #define DEVICE_COUNT 1
 #endif /* DEVICE_COUNT */
 
 #define COLOR_COUNT 16
-#define ARG_COUNT 5
+#define ARG_COUNT 6
 #define TIME_COUNT 6
 
 #define SCALE8_C 1
