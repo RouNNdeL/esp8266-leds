@@ -737,7 +737,7 @@ void setup()
         {
             flags |= FLAG_HALT;
         }
-        else
+        else if(get_reset_count() > RESTART_ATTEMPTS)
         {
             recover();
         }

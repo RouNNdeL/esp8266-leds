@@ -11,6 +11,7 @@
 #define BUILD_DATE (String(__TIME__)+"@" + __DATE__)
 #define REQUEST_RETIRES 10
 #define RECOVERY_ATTEMPTS 5
+#define RESTART_ATTEMPTS 2
 
 #define FPS 100
 #define TRANSITION_FRAMES 50
