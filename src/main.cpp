@@ -598,6 +598,19 @@ void ICACHE_FLASH_ATTR receive_profile()
     }
 }
 
+void ICACHE_FLASH_ATTR explicit_save()
+{
+    for(uint8_t d = 0; d < DEVICE_COUNT; ++d)
+    {
+        if(globals.flags[d] & GLOBALS_FLAG_PROFILE_UPDATED)
+        {
+            save_profile(&current_profile[d], d, globals.current_device_profile[d]);
+            globals.flags[d] &= ~GLOBALS_FLAG_PROFILE_UPDATED;
+        }
+    }
+    server.send(200);
+}
+
 void ICACHE_FLASH_ATTR handle_root()
 {
     // TODO: Add separate pages for each virtual device
@@ -787,6 +800,7 @@ void setup()
         server.on("/profile", receive_profile);
         server.on("/api", send_json);
         server.on("/update", manual_update_check);
+        server.on("/save", explicit_save);
         server.on("/apply_update", apply_update);
 
         const char *headers[] = {"x-Request-Id"};
