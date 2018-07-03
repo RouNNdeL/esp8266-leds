@@ -576,7 +576,7 @@ void ICACHE_FLASH_ATTR receive_profile()
 
         if(globals.current_device_profile[bytes[1]] == bytes[0])
         {
-            memcpy(&current_profile, bytes + 2, DEVICE_SIZE);
+            memcpy(&current_profile[bytes[1]], bytes + 2, DEVICE_SIZE);
             convert_all_frames();
             globals.flags[bytes[1]] |= GLOBALS_FLAG_PROFILE_UPDATED;
         }
@@ -744,12 +744,12 @@ void setup()
     }
     else
     {
-        eeprom_init();
         set_reset_count(0);
     }
 
     if(not_halt())
     {
+        eeprom_init();
         strip.begin();
         setStripStatus(COLOR_RED);
     }
