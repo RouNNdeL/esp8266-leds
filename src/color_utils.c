@@ -383,7 +383,7 @@ void digital_effect(effect effect, uint8_t *leds, led_count_t led_count, uint8_t
         set_all_colors(leds, color[0], color[1], color[2], led_count, 0);
         return;
     }
-    if(effect == FILLING_FADE || effect == FILL || effect == RAINBOW)
+    if(effect == FILLING_FADE || effect == FILL)
     {
         //<editor-fold desc="FILL, FILLING_FADE, RAINBOW">
         uint32_t sum = times[0] + times[1] + times[2] + times[3];
@@ -569,7 +569,7 @@ void digital_effect(effect effect, uint8_t *leds, led_count_t led_count, uint8_t
             }
             //</editor-fold>
         }
-        if(times[TIME_ROTATION] && effect != RAINBOW)
+        if(times[TIME_ROTATION])
         {
             uint16_t rotation_progress =
                     ((uint32_t) (frame % times[TIME_ROTATION]) * UINT16_MAX) / times[TIME_ROTATION];
@@ -577,26 +577,26 @@ void digital_effect(effect effect, uint8_t *leds, led_count_t led_count, uint8_t
             memcpy(backup, leds, led_count * 3);
             rotate_buf(leds, led_count, rotation_progress, 0, UINT8_MAX, args[ARG_BIT_PACK], backup, led_count);
         }
-        if(effect == RAINBOW)
-        {
-            //TODO: Possibly replace with SPECTRUM (if it is faster)
-            uint16_t rotation_progress = times[TIME_ROTATION] ?
-                                         ((uint32_t) (frame % times[TIME_ROTATION]) * UINT16_MAX) / times[TIME_ROTATION]
-                                                              : 0;
-            uint16_t led_progress_base = UINT16_MAX / led_count;
-            for(uint8_t i = 0; i < led_count; ++i)
-            {
-                led_index_t index =
-                        (((args[ARG_BIT_PACK] & DIRECTION) ? i : led_count - i - 1) + start_led) % led_count * 3;
-                uint16_t d_progress =
-                        (rotation_progress + i * led_progress_base) * args[ARG_RAINBOW_SOURCES] % UINT16_MAX;
-                if(args[ARG_BIT_PACK] & RAINBOW_MODE)
-                    rainbow_at_progress_full(leds + index, d_progress, args[ARG_RAINBOW_BRIGHTNESS], 1);
-                else
-                    rainbow_at_progress(leds + index, d_progress, args[ARG_RAINBOW_BRIGHTNESS], 1);
-            }
-        }
         //</editor-fold>
+    }
+    else if(effect == RAINBOW)
+    {
+        //TODO: Possibly replace with SPECTRUM (if it is faster)
+        uint16_t rotation_progress = times[TIME_ROTATION] ?
+                                     ((uint32_t) (frame % times[TIME_ROTATION]) * UINT16_MAX) / times[TIME_ROTATION]
+                                                          : 0;
+        uint16_t led_progress_base = UINT16_MAX / led_count;
+        for(uint8_t i = 0; i < led_count; ++i)
+        {
+            led_index_t index =
+                    (((args[ARG_BIT_PACK] & DIRECTION) ? i : led_count - i - 1) + start_led) % led_count * 3;
+            uint16_t d_progress =
+                    (rotation_progress + i * led_progress_base) * args[ARG_RAINBOW_SOURCES] % UINT16_MAX;
+            if(args[ARG_BIT_PACK] & RAINBOW_MODE)
+                rainbow_at_progress_full(leds + index, d_progress, args[ARG_RAINBOW_BRIGHTNESS], 1);
+            else
+                rainbow_at_progress(leds + index, d_progress, args[ARG_RAINBOW_BRIGHTNESS], 1);
+        }
     }
     else if(effect == PARTICLES)
     {
