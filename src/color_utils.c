@@ -655,9 +655,18 @@ digital_effect(effect effect, uint8_t *leds, led_count_t led_count, uint8_t star
                     uint8_t color[3];
                     cross_fade(color, _colors, 3, 0,
                                args[ARG_BIT_PACK] & SMOOTH ? particle_progress % UINT8_MAX : UINT8_MAX);
-                    led_cpy[index++] += color[0];
-                    led_cpy[index++] += color[1];
-                    led_cpy[index] += color[2];
+                    if(args[ARG_BIT_PACK] & PARTICLES_BLEND)
+                    {
+                        led_cpy[index++] += color[0];
+                        led_cpy[index++] += color[1];
+                        led_cpy[index] += color[2];
+                    }
+                    else
+                    {
+                        led_cpy[index++] = color[0];
+                        led_cpy[index++] = color[1];
+                        led_cpy[index] = color[2];
+                    }
                 }
                 else /* We are behind the particle */
                 {
