@@ -8,16 +8,16 @@ extern uint8_t debug_buffer[];
 #endif /* (COMPILE_DEBUG != 0) */
 
 /* Credit: https://github.com/FastLED/FastLED */
-uint8_t scale8( uint8_t i, uint8_t scale)
+uint8_t scale8(uint8_t i, uint8_t scale)
 {
 #if SCALE8_C == 1
-    #if (FASTLED_SCALE8_FIXED == 1)
-    return (((uint16_t)i) * (1+(uint16_t)(scale))) >> 8;
+#if (FASTLED_SCALE8_FIXED == 1)
+    return (((uint16_t) i) * (1 + (uint16_t) (scale))) >> 8;
 #else
     return ((uint16_t)i * (uint16_t)(scale) ) >> 8;
 #endif
 #elif SCALE8_AVRASM == 1
-    #if defined(LIB8_ATTINY)
+#if defined(LIB8_ATTINY)
 #if (FASTLED_SCALE8_FIXED == 1)
     uint8_t work=i;
 #else
@@ -348,6 +348,7 @@ void simple_effect(effect effect, uint8_t *color, uint32_t frame, uint16_t *time
 #pragma clang diagnostic ignored "-Wuninitialized"
 
 #pragma clang diagnostic ignored "-Wconversion"
+
 /**
  * Function to calculate the effects for addressable LEDs
  *
@@ -373,8 +374,9 @@ void simple_effect(effect effect, uint8_t *color, uint32_t frame, uint16_t *time
  *               in a RGB order
  * @param color_count - how many colors are in use
  */
-void digital_effect(effect effect, uint8_t *leds, led_count_t led_count, uint8_t start_led, uint32_t frame, uint16_t *times,
-                    uint8_t *args, uint8_t *colors, uint8_t color_count)
+void
+digital_effect(effect effect, uint8_t *leds, led_count_t led_count, uint8_t start_led, uint32_t frame, uint16_t *times,
+               uint8_t *args, uint8_t *colors, uint8_t color_count)
 {
     if(effect == BREATHE || effect == FADE || (effect == RAINBOW && (args[ARG_BIT_PACK] & RAINBOW_SIMPLE)))
     {
@@ -431,7 +433,7 @@ void digital_effect(effect effect, uint8_t *leds, led_count_t led_count, uint8_t
                     uint8_t direction = (arg_number ? args[ARG_FILL_PIECE_DIRECTIONS2] :
                                          args[ARG_FILL_PIECE_DIRECTIONS1]) & (1 << piece);
                     led_index_t index = (((direction ? i : led_count - i - 1))
-                                     % piece_leds + piece * piece_leds + start_led) % led_count * 3;
+                                         % piece_leds + piece * piece_leds + start_led) % led_count * 3;
 
                     uint8_t n_color_for_piece = n_color + 3 * (((piece + 8 * arg_number)) % args[ARG_FILL_COLOR_COUNT]);
                     if(led_progress_current >= UINT8_MAX)
@@ -603,16 +605,16 @@ void digital_effect(effect effect, uint8_t *leds, led_count_t led_count, uint8_t
         //<editor-fold desc="PARTICLES">
         uint16_t led_bytes = led_count * UINT8_MAX;
         uint16_t particle_offset =
-                (uint32_t) (led_bytes + args[ARG_PARTICLES_SIZE] * UINT8_MAX) * times[TIME_PARTICLE_DELAY] /
+                (uint32_t) (led_bytes) * times[TIME_PARTICLE_DELAY] /
                 times[TIME_PARTICLE_SPEED];
-        particle_offset = particle_offset ? particle_offset
-                                          : 1; /* Just in case the user entries TIME_PARTICLE_DELAY = 0 */
+        /* Just in case the user entries TIME_PARTICLE_DELAY = 0 */
+        particle_offset = particle_offset ? particle_offset : 1;
         uint16_t speed_in_offset = ((uint32_t) times[TIME_PARTICLE_SPEED] * particle_offset) / led_bytes;
         uint16_t d_time = frame % speed_in_offset;
-        int16_t particle_progress = (led_bytes + args[ARG_PARTICLES_SIZE] * UINT8_MAX - particle_offset) +
+        int32_t particle_progress = (led_bytes + args[ARG_PARTICLES_SIZE] * UINT8_MAX - particle_offset) +
                                     (uint32_t) d_time * particle_offset / speed_in_offset;
 
-        /* Precalculated array that determines the brighntess at each point of the particle */
+        /* Precalculated array that determines the brightness at each point of the particle */
         uint8_t particle[args[ARG_PARTICLES_SIZE] + 2];
         particle[0] = 0;
         for(uint8_t i = 1; i <= args[ARG_PARTICLES_SIZE]; ++i)
@@ -622,11 +624,11 @@ void digital_effect(effect effect, uint8_t *leds, led_count_t led_count, uint8_t
         }
         particle[args[ARG_PARTICLES_SIZE] + 1] = 0;
 
-        uint16_t led_cpy[led_count * 3];
-        set_all_colors(led_cpy, 0, 0, 0, led_count * 2, 0);
-        uint8_t particle_count = 0;
+        uint32_t led_cpy[led_count * 3];
+        memset(led_cpy, 0, led_count * 3 * sizeof(uint32_t));
 
         uint8_t n_color = frame / speed_in_offset % color_count * 3;
+        uint8_t color_cycle = 0;
         for(;;)
         {
             //<editor-fold desc="Single particle">
@@ -643,7 +645,7 @@ void digital_effect(effect effect, uint8_t *leds, led_count_t led_count, uint8_t
                 }
                 else if(i * UINT8_MAX <= particle_progress)
                 {
-                    uint8_t p_index = i - (particle_progress / UINT8_MAX - args[ARG_PARTICLES_SIZE]);
+                    uint8_t p_index = i  + args[ARG_PARTICLES_SIZE]- particle_progress / UINT8_MAX;
                     uint8_t _colors[6];
 
                     set_color_manual(_colors, color_brightness(particle[p_index], color_from_buf(colors + n_color)));
@@ -664,15 +666,18 @@ void digital_effect(effect effect, uint8_t *leds, led_count_t led_count, uint8_t
                 }
             }
             //</editor-fold>
-            if(particle_progress < particle_offset || times[TIME_PARTICLE_DELAY] > times[TIME_PARTICLE_SPEED]) break;
+            if(particle_progress < particle_offset || times[TIME_PARTICLE_DELAY] > times[TIME_PARTICLE_SPEED])
+                break;
+
             particle_progress -= particle_offset;
-            particle_count++;
-            n_color = (n_color + 3) % (color_count * 3);
+            color_cycle = (color_cycle + 1) % args[ARG_COLOR_CYCLES];
+            if(!color_cycle)
+                n_color = (n_color + 3) % (color_count * 3);
         }
 
         for(uint8_t i = 0; i < led_count * 3; i++)
         {
-            leds[i] = (uint8_t) led_cpy[i];
+            leds[i] = led_cpy[i] > UINT8_MAX ? UINT8_MAX : led_cpy[i];
         }
         //</editor-fold>
     }
@@ -698,7 +703,8 @@ void digital_effect(effect effect, uint8_t *leds, led_count_t led_count, uint8_t
 
         for(uint8_t i = 0; i < led_count; ++i)
         {
-            led_index_t index = (((args[ARG_BIT_PACK] & DIRECTION) ? i : led_count - i - 1) + start_led) % led_count * 3;
+            led_index_t index =
+                    (((args[ARG_BIT_PACK] & DIRECTION) ? i : led_count - i - 1) + start_led) % led_count * 3;
 
             if(args[ARG_SPECTRUM_MODES] & (1 << run))
                 cross_fade(leds + index, colors, (base_color + n_color) * 3, (base_color + m_color) * 3,
@@ -843,4 +849,5 @@ void digital_effect(effect effect, uint8_t *leds, led_count_t led_count, uint8_t
         //</editor-fold>
     }
 }
+
 #pragma clang diagnostic pop
