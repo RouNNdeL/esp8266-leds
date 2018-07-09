@@ -534,7 +534,7 @@ void ICACHE_FLASH_ATTR receive_globals()
         }
         else
         {
-             refresh_devices();
+            refresh_devices();
         }
         if(previous_auto_increment != globals.auto_increment)
         {
@@ -611,6 +611,11 @@ void ICACHE_FLASH_ATTR explicit_save()
     server.send(200);
 }
 
+void ICACHE_FLASH_ATTR handle_halt()
+{
+    server.send(200, "text/plain", "Device has been halted to allow for manual recovery via ArduinoOTA");
+}
+
 void ICACHE_FLASH_ATTR handle_root()
 {
     // TODO: Add separate pages for each virtual device
@@ -635,7 +640,7 @@ void ICACHE_FLASH_ATTR handle_root()
 void ICACHE_FLASH_ATTR restart()
 {
     server.send(200, "text/html",
-                "<p>Your device is restarting...</p><p><a href=\"/\">Go back to configuration panel</a></p>");
+                F("<p>Your device is restarting...</p><p id=\"a\">It should come online in 15s</p><script>var a=15;setInterval(function(){a--;if(!a)window.location=\"/\";document.getElementById(\"a\").innerHTML=\"It should come online in \"+a+\"s\";},1000)</script>"));
     delay(500);
     ESP.restart();
 }
@@ -745,15 +750,24 @@ void setup()
     EEPROM.begin(SPI_FLASH_SEC_SIZE);
     if(ESP.getResetInfoPtr()->reason == REASON_EXCEPTION_RST)
     {
-        increase_reset_count();
+#if SERIAL_DEBUG
+        Serial.println("Exception detected: "+String(get_reset_count()+1));
+#endif /* SERIAL_DEBUG */
         if(get_reset_count() > RECOVERY_ATTEMPTS)
         {
             flags |= FLAG_HALT;
+#if SERIAL_DEBUG
+            Serial.println("HALT");
+#endif /* SERIAL_DEBUG */
         }
         else if(get_reset_count() > RESTART_ATTEMPTS)
         {
             recover();
+#if SERIAL_DEBUG
+            Serial.println("Attempting to recover");
+#endif /* SERIAL_DEBUG */
         }
+        increase_reset_count();
     }
     else
     {
@@ -784,17 +798,15 @@ void setup()
     Serial.println("|---------------------------|");
 #endif /* SERIAL_DEBUG */
 
-#if PAGE_DEBUG
-    server.on("/debug", debug_info);
-#endif /* PAGE_DEBUG */
-
     WiFi.onStationModeDisconnected(on_disconnected);
 
     if(not_halt())
     {
+#if PAGE_DEBUG
+        server.on("/debug", debug_info);
+#endif /* PAGE_DEBUG */
         server.on("/", handle_root);
         server.on("/recover", handle_recover);
-        server.on("/restart", restart);
         server.on("/config", redirect_to_config);
         server.on("/globals", receive_globals);
         server.on("/profile", receive_profile);
@@ -813,7 +825,11 @@ void setup()
     else
     {
         sendDeviceHalted();
+        server.on("/", handle_halt);
+        server.begin();
     }
+
+    server.on("/restart", restart);
 
     ArduinoOTA.begin();
 }
@@ -822,13 +838,14 @@ void loop()
 {
     ArduinoOTA.handle();
 
-    if(halt())
-        return;
     /* We do not want the transition to lag, so we don't handle the client */
     if(!(flags & FLAG_TRANSITION) || flags & FLAG_QUICK_TRANSITION)
     {
         server.handleClient();
     }
+
+    if(halt())
+        return;
 
     if(flags & FLAG_NEW_FRAME)
     {
@@ -838,41 +855,38 @@ void loop()
         for(uint8_t d = 0; d < DEVICE_COUNT; ++d)
         {
             uint8_t *p = strip.getPixels() + virtual_led_offset * 3;
-            if(globals.flags[d] & GLOBALS_FLAG_ENABLED | flags & FLAG_TRANSITION)
+            if(globals.flags[d] & GLOBALS_FLAG_ENABLED && globals.flags[d] & GLOBALS_FLAG_EFFECTS)
             {
-                if(globals.flags[d] & GLOBALS_FLAG_EFFECTS)
+
+                device_profile &device = current_profile[d];
+                digital_effect((effect) device.effect, p, virtual_devices[d], 0, frame + frames[d][TIME_DELAY],
+                               frames[d], device.args, device.colors, device.color_count);
+
+
+                for(uint8_t i = 0; i < virtual_devices[d]; ++i)
                 {
-
-                    device_profile &device = current_profile[d];
-                    digital_effect((effect) device.effect, p, virtual_devices[d], 0, frame + frames[d][TIME_DELAY],
-                                   frames[d], device.args, device.colors, device.color_count);
-
-
-                    for(uint8_t i = 0; i < virtual_devices[d]; ++i)
-                    {
-                        uint8_t index = i * 3;
-                        set_color_manual(p + index, color_brightness(globals.brightness[d], color_from_buf(p + index)));
-                        p[index] = actual_brightness(p[index]);
-                        p[index + 1] = actual_brightness(p[index + 1]);
-                        p[index + 2] = actual_brightness(p[index + 2]);
-                    }
-
-                    strip.show();
+                    uint8_t index = i * 3;
+                    set_color_manual(p + index, color_brightness(globals.brightness[d], color_from_buf(p + index)));
+                    p[index] = actual_brightness(p[index]);
+                    p[index + 1] = actual_brightness(p[index + 1]);
+                    p[index + 2] = actual_brightness(p[index + 2]);
                 }
-                else
+
+                strip.show();
+            }
+            else if(globals.flags[d] & GLOBALS_FLAG_ENABLED || flags & FLAG_TRANSITION && !(globals.flags[d] & GLOBALS_FLAG_EFFECTS))
+            {
+                uint8_t index = d * 6;
+                uint8_t color[3];
+                cross_fade(color, color_converted + index, 3, 0, transition_frame * UINT8_MAX / transition_frames);
+                color[index] = actual_brightness(color[index]);
+                color[index + 1] = actual_brightness(color[index + 1]);
+                color[index + 2] = actual_brightness(color[index + 2]);
+                for(led_count_t i = 0; i < virtual_devices[d]; ++i)
                 {
-                    uint8_t index = d * 6;
-                    uint8_t color[3];
-                    cross_fade(color, color_converted + index, 3, 0, transition_frame * UINT8_MAX / transition_frames);
-                    color[index] = actual_brightness(color[index]);
-                    color[index + 1] = actual_brightness(color[index + 1]);
-                    color[index + 2] = actual_brightness(color[index + 2]);
-                    for(led_count_t i = 0; i < virtual_devices[d]; ++i)
-                    {
-                        set_color_manual(p + i * 3, grb(color_from_buf(color)));
-                    }
-                    strip.show();
+                    set_color_manual(p + i * 3, grb(color_from_buf(color)));
                 }
+                strip.show();
             }
             else
             {
