@@ -19,7 +19,6 @@ Adafruit_NeoPixel strip = Adafruit_NeoPixel(LED_COUNT, LED_PIN, NEO_GRB + NEO_KH
 ESP8266WebServer server(80);
 
 #define FLAG_NEW_FRAME (1 << 0)
-#define FLAG_TRANSITION (1 << 1)
 #define FLAG_QUICK_TRANSITION (1 << 2)
 #define FLAG_HALT (1 << 7)
 
@@ -37,24 +36,29 @@ global_settings globals;
 
 /* The first 3 bytes are the current color, the last 3 bytes are the old color to transition from */
 uint8_t color_converted[6 * DEVICE_COUNT] = {};
-volatile transition_t transition_frame;
-transition_t transition_frames;
+volatile transition_t transition_frame[DEVICE_COUNT] = {0};
+transition_t transition_frames[DEVICE_COUNT];
 String requestId = "";
 
 device_profile current_profile[DEVICE_COUNT];
 uint16_t frames[DEVICE_COUNT][TIME_COUNT];
 uint32_t auto_increment;
 
-#define all_enabled() all_any_en_dis(0, 1)
-#define any_enabled() all_any_en_dis(1, 1)
-#define all_disabled() all_any_en_dis(0, 0)
-#define any_disabled() all_any_en_dis(1, 0)
+#define ALL 0
+#define ANY 1
+#define SET 1
+#define NOT_SET 0
 
-uint8_t all_any_en_dis(uint8_t any, uint8_t enabled)
+#define all_enabled() all_any_flag_set(GLOBALS_FLAG_ENABLED, ALL, SET)
+#define any_enabled() all_any_flag_set(GLOBALS_FLAG_ENABLED, ANY, SET)
+#define all_disabled() all_any_flag_set(GLOBALS_FLAG_ENABLED, ALL, NOT_SET)
+#define any_disabled() all_any_flag_set(GLOBALS_FLAG_ENABLED, ANY, NOT_SET)
+
+uint8_t all_any_flag_set(uint8_t flag, uint8_t any, uint8_t set)
 {
     for(uint8_t i = 0; i < DEVICE_COUNT; ++i)
     {
-        if(globals.flags[i] & GLOBALS_FLAG_ENABLED ^ enabled ^ any)
+        if(globals.flags[i] & flag ^ set ^ any)
             return any;
     }
     return !any;
@@ -141,24 +145,23 @@ uint32_t autoincrement_to_frames(uint8_t time)
 
 void convert_color()
 {
-    for(uint8_t i = 0; i < DEVICE_COUNT; ++i)
+    for(uint8_t d = 0; d < DEVICE_COUNT; ++d)
     {
-        uint8_t index = i * 6;
+        uint8_t index = d * 6;
 
         /* Copy the now old color to its place (3 bytes after the new) */
         memcpy(color_converted + index + 3, color_converted + index, 3);
 
-        uint8_t brightness = (globals.flags[i] & GLOBALS_FLAG_ENABLED) ? globals.brightness[i] : 0;
-        set_color_manual(color_converted + index, color_brightness(brightness, color_from_buf(globals.color + i * 3)));
-        color_brightness(brightness, color_from_buf(globals.color + i * 3));
+        uint8_t brightness = (globals.flags[d] & GLOBALS_FLAG_ENABLED) ? globals.brightness[d] : 0;
+        set_color_manual(color_converted + index, color_brightness(brightness, color_from_buf(globals.color + d * 3)));
+        color_brightness(brightness, color_from_buf(globals.color + d * 3));
 
+        if(globals.flags[d] & FLAG_QUICK_TRANSITION)
+            transition_frames[d] = TRANSITION_QUICK_FRAMES;
+        else
+            transition_frames[d] = TRANSITION_FRAMES;
+        globals.flags[d] |= GLOBALS_FLAG_TRANSITION;
     }
-    transition_frame = 0;
-    if(flags & FLAG_QUICK_TRANSITION)
-        transition_frames = TRANSITION_QUICK_FRAMES;
-    else
-        transition_frames = TRANSITION_FRAMES;
-    flags |= FLAG_TRANSITION;
 
 }
 
@@ -194,7 +197,13 @@ void timerCallback(void *pArg)
 {
     flags |= FLAG_NEW_FRAME;
     frame++;
-    if(flags & FLAG_TRANSITION) transition_frame++;
+    for(int d = 0; d < DEVICE_COUNT; ++d)
+    {
+        if(globals.flags[d] & GLOBALS_FLAG_TRANSITION)
+        {
+            transition_frame[d]++;
+        }
+    }
 }
 
 void user_init()
@@ -466,7 +475,7 @@ void ICACHE_FLASH_ATTR debug_info()
     content += "<p>device_id: <b>" + String(DEVICE_ID) + "</b></p>";
     content += "<p>device_flags: <b>" + String(flags) + "</b></p>";
     content += "<p>device_frame: <b>" + String(frame) + "</b></p>";
-    content += "<p>device_transition_frame: <b>" + String(transition_frame) + "</b></p>";
+    content += "<p>device_transition_frame: <b>" + String(transition_frame[0]) + "</b></p>";
     content += "<p>flags: <b>" + flags_array + "</b></p>";
     content += "<p>color: <b>#" + r + g + b + "</b></p>";
     content += "<p>brightness: <b>" + brightness_array + "</b></p>";
@@ -640,7 +649,7 @@ void ICACHE_FLASH_ATTR handle_root()
 void ICACHE_FLASH_ATTR restart()
 {
     server.send(200, "text/html",
-                F("<p>Your device is restarting...</p><p id=\"a\">It should come online in 15s</p><script>var a=15;setInterval(function(){a--;if(!a)window.location=\"/\";document.getElementById(\"a\").innerHTML=\"It should come online in \"+a+\"s\";},1000)</script>"));
+                F("<p>Your device is restarting...</p><p id=\"a\">It should come online in 15s</p><script>var a=15;setInterval(function(){a--; if(!a)window.location=\"/\";document.getElementById(\"a\").innerHTML=\"It should come online in \"+a+\"s\";},1000)</script>"));
     delay(500);
     ESP.restart();
 }
@@ -839,7 +848,7 @@ void loop()
     ArduinoOTA.handle();
 
     /* We do not want the transition to lag, so we don't handle the client */
-    if(!(flags & FLAG_TRANSITION) || flags & FLAG_QUICK_TRANSITION)
+    if(halt() || all_any_flag_set(GLOBALS_FLAG_TRANSITION, ALL, NOT_SET) || flags & FLAG_QUICK_TRANSITION)
     {
         server.handleClient();
     }
@@ -855,18 +864,23 @@ void loop()
         for(uint8_t d = 0; d < DEVICE_COUNT; ++d)
         {
             uint8_t *p = strip.getPixels() + virtual_led_offset * 3;
-            if(globals.flags[d] & GLOBALS_FLAG_ENABLED && globals.flags[d] & GLOBALS_FLAG_EFFECTS)
+            if((globals.flags[d] & GLOBALS_FLAG_ENABLED || globals.flags[d] & GLOBALS_FLAG_TRANSITION) &&
+               globals.flags[d] & GLOBALS_FLAG_EFFECTS)
             {
 
                 device_profile &device = current_profile[d];
                 digital_effect((effect) device.effect, p, virtual_devices[d], 0, frame + frames[d][TIME_DELAY],
                                frames[d], device.args, device.colors, device.color_count);
 
+                uint8_t brightness = globals.brightness[d];
+                /*if(globals.flags[d] & GLOBALS_FLAG_TRANSITION)
+                    brightness = transition_frame[d] * brightness / transition_frames[d];*/
 
                 for(uint8_t i = 0; i < virtual_devices[d]; ++i)
                 {
                     uint8_t index = i * 3;
-                    set_color_manual(p + index, color_brightness(globals.brightness[d], color_from_buf(p + index)));
+
+                    set_color_manual(p + index, color_brightness(brightness, color_from_buf(p + index)));
                     p[index] = actual_brightness(p[index]);
                     p[index + 1] = actual_brightness(p[index + 1]);
                     p[index + 2] = actual_brightness(p[index + 2]);
@@ -874,11 +888,12 @@ void loop()
 
                 strip.show();
             }
-            else if(globals.flags[d] & GLOBALS_FLAG_ENABLED || flags & FLAG_TRANSITION && !(globals.flags[d] & GLOBALS_FLAG_EFFECTS))
+            else if(globals.flags[d] & GLOBALS_FLAG_ENABLED || globals.flags[d] & GLOBALS_FLAG_TRANSITION)
             {
                 uint8_t index = d * 6;
                 uint8_t color[3];
-                cross_fade(color, color_converted + index, 3, 0, transition_frame * UINT8_MAX / transition_frames);
+                cross_fade(color, color_converted + index, 3, 0,
+                           transition_frame[d] * UINT8_MAX / transition_frames[d]);
                 color[index] = actual_brightness(color[index]);
                 color[index + 1] = actual_brightness(color[index + 1]);
                 color[index + 2] = actual_brightness(color[index + 2]);
@@ -897,20 +912,14 @@ void loop()
                 strip.show();
             }
 
-            virtual_led_offset += virtual_devices[d];
-        }
-
-
-        if(transition_frame >= transition_frames && flags & FLAG_TRANSITION)
-        {
-            for(uint8_t i = 0; i < DEVICE_COUNT; ++i)
+            if(transition_frame[d] >= transition_frames[d] && globals.flags[d] & GLOBALS_FLAG_TRANSITION)
             {
-                uint8_t index = i * 6;
-                memcpy(color_converted + index + 3, color_converted + index, 3);
+                memcpy(color_converted + d * 6 + 3, color_converted + d * 6, 3);
+                globals.flags[d] &= ~GLOBALS_FLAG_TRANSITION;
+                transition_frame[d] = 0;
             }
-            flags &= ~FLAG_TRANSITION;
-            if(!(flags & FLAG_QUICK_TRANSITION))
-                sendDeviceState();
+
+            virtual_led_offset += virtual_devices[d];
         }
 
         if(auto_increment && frame && frame % auto_increment == 0 && any_enabled() && globals.profile_count > 1)

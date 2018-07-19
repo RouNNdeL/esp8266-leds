@@ -44,6 +44,7 @@ uint8_t increase_reset_count();
 #define GLOBALS_FLAG_ENABLED (1 << 0)
 #define GLOBALS_FLAG_STATUSES (1 << 1)
 #define GLOBALS_FLAG_EFFECTS (1 << 2)
+#define GLOBALS_FLAG_TRANSITION (1 << 7)
 #define GLOBALS_FLAG_PROFILE_UPDATED (1 << 7)
 
 #define GLOBALS_SIZE sizeof(global_settings)
