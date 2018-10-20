@@ -335,38 +335,6 @@ String getDeviceJson() {
     return content;
 }
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wconversion"
-
-int32_t sendDeviceState() {
-    int32_t code;
-    uint8_t tries = 0;
-    do {
-        tries++;
-        HTTPClient http;
-#if HTTP_STATE_HTTPS
-        http.begin(HTTP_SERVER_HOST, HTTP_SERVER_PORT_HTTPS, String(HTTP_STATE_URL), HTTP_SERVER_HTTPS_FINGERPRINT);
-#else
-        http.begin(HTTP_SERVER_HOST, HTTP_SERVER_PORT_HTTP, String(HTTP_STATE_URL));
-#endif /* HTTP_UPDATE_HTTPS */
-
-        http.setUserAgent(F("ESP8266"));
-        http.addHeader(F("Content-Type"), "application/json");
-        http.addHeader(F("x-Request-Attempts"), String(tries));
-
-        if(requestId.length() > 0 && requestId[0] != 0x00)
-            http.addHeader(F("x-Request-Id"), requestId);
-
-
-        code = http.POST(getDeviceJson());
-        http.end();
-    }
-    while((code == -1 || code == -11) && tries < REQUEST_RETIRES);
-    return code;
-}
-
-#pragma clang diagnostic pop
-
 int32_t sendDeviceHalted() {
     int32_t code;
     uint8_t tries = 0;

@@ -48,19 +48,16 @@ typedef uint16_t transition_t;
 #define CONFIG_PAGE "http://led/"
 #endif /* CONFIG_PAGE */
 
-#define HTTP_SERVER_HOST "home.zdul.xyz"
+#define HTTP_SERVER_HOST "_update.zdul.xyz"
 #define HTTP_SERVER_PORT_HTTP 80
 #define HTTP_SERVER_PORT_HTTPS 443
-#define HTTP_SERVER_HTTPS_FINGERPRINT "16 32 09 61 08 56 fa 41 c2 ad 0c 25 08 2a 06 1d 67 1d 55 fb"
+#define HTTP_SERVER_HTTPS_FINGERPRINT "ad 62 8e a6 bd 5c 05 8a 9d f3 ea 94 92 0e 6d 83 49 74 d2 8e"
 
 #define HTTP_UPDATE_HTTPS 1
-#define HTTP_UPDATE_URL "/api/esp_update.php"
-
-#define HTTP_STATE_HTTPS 1
-#define HTTP_STATE_URL "/api/local/esp_report_state.php"
+#define HTTP_UPDATE_URL "/esp_update.php"
 
 #define HTTP_HALT_HTTPS 1
-#define HTTP_HALT_URL "/api/local/esp_report_halt.php"
+#define HTTP_HALT_URL "/esp_report_halt.php"
 
 #define UDP_DISCOVERY_MSG "ROUNDEL_IOT_DISCOVERY"
 #define UDP_DISCOVERY_RESPONSE "ROUNDEL_IOT_RESPONSE"
@@ -87,5 +84,7 @@ typedef uint16_t transition_t;
 #ifndef PAGE_DEBUG
 #define PAGE_DEBUG 1
 #endif /* PAGE_DEBUG */
+
+#define SERIAL_DEBUG 1
 
 #endif //WIFICONTROLLER_CONFIG_H
