@@ -48,10 +48,10 @@ typedef uint16_t transition_t;
 #define CONFIG_PAGE "http://led/"
 #endif /* CONFIG_PAGE */
 
-#define HTTP_SERVER_HOST "_update.zdul.xyz"
+#define HTTP_SERVER_HOST "iot-api.zdul.xyz"
 #define HTTP_SERVER_PORT_HTTP 80
 #define HTTP_SERVER_PORT_HTTPS 443
-#define HTTP_SERVER_HTTPS_FINGERPRINT "ad 62 8e a6 bd 5c 05 8a 9d f3 ea 94 92 0e 6d 83 49 74 d2 8e"
+#define HTTP_SERVER_HTTPS_FINGERPRINT "01 77 78 5b ee 26 28 11 6f 66 82 4e 6f 02 87 0a c4 c1 34 42"
 
 #define HTTP_UPDATE_HTTPS 1
 #define HTTP_UPDATE_URL "/esp_update.php"
