@@ -49,7 +49,7 @@ volatile transition_t transition_frame[DEVICE_COUNT] = {0};
 transition_t transition_frames[DEVICE_COUNT];
 String requestId = "";
 
-device_profile current_profile[DEVICE_COUNT];
+device_effect current_effect[DEVICE_COUNT];
 uint16_t frames[DEVICE_COUNT][TIME_COUNT];
 uint32_t auto_increment;
 
@@ -101,7 +101,7 @@ void convert_to_frames(uint16_t *frames, uint8_t *times) {
 
 void convert_all_frames() {
     for(uint8_t i = 0; i < DEVICE_COUNT; ++i) {
-        convert_to_frames(frames[i], current_profile[i].timing);
+        convert_to_frames(frames[i], current_effect[i].timing);
     }
 }
 
@@ -160,7 +160,7 @@ void convert_color_and_brightness() {
 void save_modified() {
     for(uint8_t d = 0; d < DEVICE_COUNT; ++d) {
         if(device_flags[d] & DEVICE_FLAG_EFFECT_UPDATED) {
-            save_profile(&current_profile[d], d, globals.current_device_profile[d]);
+            save_effect(&current_effect[d], d, globals.current_device_profile[d]);
             device_flags[d] &= ~DEVICE_FLAG_EFFECT_UPDATED;
         }
     }
@@ -168,7 +168,7 @@ void save_modified() {
 
 void refresh_devices() {
     for(uint8_t d = 0; d < DEVICE_COUNT; ++d) {
-        load_device(&current_profile[d], d, globals.current_device_profile[d]);
+        load_effect(&current_effect[d], d, globals.current_device_profile[d]);
     }
     convert_all_frames();
 }
@@ -176,7 +176,7 @@ void refresh_devices() {
 void load_profile(uint8_t n) {
     for(uint8_t d = 0; d < DEVICE_COUNT; d++) {
         if(globals.profiles[n][d] > -1) {
-            load_device(&current_profile[d], d, globals.profiles[n][d]);
+            load_effect(&current_effect[d], d, globals.profiles[n][d]);
             globals.current_device_profile[d] = globals.profiles[n][d];
         }
     }
@@ -353,7 +353,7 @@ String getDeviceJson() {
                      R"(,"version_name":")" + String(VERSION_NAME) +
                      R"(","device_id":")" + DEVICE_ID +
                      "\",\"auto_increment\":" + String(auto_increment / FPS) +
-                     ",\"current_profile\":" + String(globals.current_profile) +
+                     ",\"current_effect\":" + String(globals.current_profile) +
                      ",\"color\":" + color_array +
                      ",\"flags\":" + flags_array +
                      ",\"brightness\":" + brightness_array + "}";
@@ -422,7 +422,7 @@ void ICACHE_FLASH_ATTR debug_info() {
     content += "<p>profile_count: <b>" + String(globals.profile_count) + "</b></p>";
     content += "<p>auto_increment: <b>" + String(globals.auto_increment) + "</b></p>";
     content += "<p>auto_increment frames: <b>" + String(auto_increment) + "</b></p>";
-    content += "<p>current_profile: <b>" + String(globals.current_profile) + "</b></p>";
+    content += "<p>current_effect: <b>" + String(globals.current_profile) + "</b></p>";
     content += "<p>current_device_profile: <b>[";
     for(uint8_t i = 0; i < DEVICE_COUNT; i++) {
         if(i) content += ",";
@@ -510,14 +510,14 @@ void ICACHE_FLASH_ATTR receive_profile() {
         }
 
         if(globals.current_device_profile[bytes[1]] == bytes[0]) {
-            memcpy(&current_profile[bytes[1]], bytes + 2, DEVICE_SIZE);
+            memcpy(&current_effect[bytes[1]], bytes + 2, DEVICE_SIZE);
             convert_all_frames();
             device_flags[bytes[1]] |= DEVICE_FLAG_EFFECT_UPDATED;
         }
         else {
-            device_profile tmp;
+            device_effect tmp;
             memcpy(&tmp, bytes + 2, DEVICE_SIZE);
-            save_profile(&tmp, bytes[1], bytes[0]);
+            save_effect(&tmp, bytes[1], bytes[0]);
         }
         server.send(204);
     }
@@ -528,24 +528,6 @@ void ICACHE_FLASH_ATTR receive_profile() {
         server.send(400);
 #endif /* SERIAL_DEBUG */
     }
-}
-
-void ICACHE_FLASH_ATTR preview_effect() {
-    if(server.hasArg("plain") && server.arg("plain").length() == 4 && server.method() == HTTP_PUT) {
-        uint8_t bytes[2];
-        auto c = server.arg("plain");
-        for(uint8_t i = 0; i < sizeof(bytes); ++i) {
-            bytes[i] = char2int(c[i * 2]) * 16 + char2int(c[i * 2 + 1]);
-        }
-        if(globals.current_device_profile[bytes[1]] != bytes[0]) {
-            if(device_flags[bytes[1]] & DEVICE_FLAG_EFFECT_UPDATED) {
-                save_profile(&current_profile[bytes[1]], bytes[1], globals.current_device_profile[bytes[1]]);
-                device_flags[bytes[1]] &= ~DEVICE_FLAG_EFFECT_UPDATED;
-            }
-            load_device(&current_profile[bytes[1]], bytes[1], bytes[0]);
-        }
-    }
-    server.send(204);
 }
 
 void ICACHE_FLASH_ATTR handle_halt() {
@@ -622,22 +604,22 @@ void recover() {
         globals.profiles[0][i] = 0;
         globals.current_device_profile[i] = 0;
 
-        current_profile[i].effect = BREATHE;
-        current_profile[i].color_count = 3;
-        current_profile[i].timing[TIME_OFF] = 0;
-        current_profile[i].timing[TIME_FADEIN] = 10;
-        current_profile[i].timing[TIME_ON] = 0;
-        current_profile[i].timing[TIME_FADEOUT] = 10;
-        current_profile[i].timing[TIME_ROTATION] = 0;
-        current_profile[i].timing[TIME_DELAY] = 0;
-        current_profile[i].args[ARG_BREATHE_START] = 0;
-        current_profile[i].args[ARG_BREATHE_END] = 255;
-        current_profile[i].args[ARG_COLOR_CYCLES] = 1;
-        set_color_manual(current_profile[i].colors, grb(COLOR_RED));
-        set_color_manual(current_profile[i].colors + 3, grb(COLOR_BLUE));
-        set_color_manual(current_profile[i].colors + 6, grb(COLOR_GREEN));
+        current_effect[i].effect = BREATHE;
+        current_effect[i].color_count = 3;
+        current_effect[i].timing[TIME_OFF] = 0;
+        current_effect[i].timing[TIME_FADEIN] = 10;
+        current_effect[i].timing[TIME_ON] = 0;
+        current_effect[i].timing[TIME_FADEOUT] = 10;
+        current_effect[i].timing[TIME_ROTATION] = 0;
+        current_effect[i].timing[TIME_DELAY] = 0;
+        current_effect[i].args[ARG_BREATHE_START] = 0;
+        current_effect[i].args[ARG_BREATHE_END] = 255;
+        current_effect[i].args[ARG_COLOR_CYCLES] = 1;
+        set_color_manual(current_effect[i].colors, grb(COLOR_RED));
+        set_color_manual(current_effect[i].colors + 3, grb(COLOR_BLUE));
+        set_color_manual(current_effect[i].colors + 6, grb(COLOR_GREEN));
 
-        save_profile(&current_profile[i], i, 0);
+        save_effect(&current_effect[i], i, 0);
     }
 
     globals.auto_increment = 0;
@@ -730,7 +712,6 @@ void setup() {
         server.on("/profile", receive_profile);
         server.on("/api", send_json);
         server.on("/update", manual_update_check);
-        server.on("/preview", preview_effect);
         server.on("/apply_update", apply_update);
 
         const char *headers[] = {"x-Request-Id"};
@@ -775,7 +756,7 @@ void loop() {
 #endif
                 ) && globals.flags[d] & GLOBALS_FLAG_EFFECTS) {
 
-                device_profile &device = current_profile[d];
+                device_effect &device = current_effect[d];
                 digital_effect((effect) device.effect, p, virtual_devices_led_count[d], 0,
                                frame + frames[d][TIME_DELAY],
                                frames[d], device.args, device.colors, device.color_count);
@@ -837,7 +818,7 @@ void loop() {
         if(auto_increment && frame && frame % auto_increment == 0 && any_enabled() && globals.profile_count > 1) {
             for(uint8_t d = 0; d < DEVICE_COUNT; ++d) {
                 if(device_flags[d] & DEVICE_FLAG_EFFECT_UPDATED) {
-                    save_profile(&current_profile[d], d, globals.current_device_profile[d]);
+                    save_effect(&current_effect[d], d, globals.current_device_profile[d]);
                     device_flags[d] &= ~DEVICE_FLAG_EFFECT_UPDATED;
                 }
             }

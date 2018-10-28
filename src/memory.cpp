@@ -2,13 +2,13 @@
 #include <EEPROM.h>
 #include <HardwareSerial.h>
 
-void load_device(device_profile *p, uint8_t d, uint8_t n) {
+void load_effect(device_effect *p, uint8_t d, uint8_t n) {
     for(uint8_t t = 0; t < DEVICE_SIZE; t++) {
         *((uint8_t *) p + t) = EEPROM.read(DEVICE_ADDRESS(d, n) + t);
     }
 }
 
-void save_profile(device_profile *p, uint8_t d, uint8_t n) {
+void save_effect(device_effect *p, uint8_t d, uint8_t n) {
     for(uint8_t t = 0; t < DEVICE_SIZE; t++) {
         EEPROM.write(DEVICE_ADDRESS(d, n) + t, *((uint8_t *) p + t));
     }

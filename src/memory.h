@@ -12,7 +12,7 @@ typedef struct
     uint8_t timing[TIME_COUNT];
     uint8_t args[ARG_COUNT];
     uint8_t colors[COLOR_COUNT * 3];
-} __attribute__((packed)) device_profile;
+} __attribute__((packed)) device_effect;
 
 typedef struct
 {
@@ -29,11 +29,11 @@ typedef struct
 
 void load_globals(global_settings *globals);
 
-void load_device(device_profile *p, uint8_t d, uint8_t n);
+void load_effect(device_effect *p, uint8_t d, uint8_t n);
 
 void save_globals(global_settings *globals);
 
-void save_profile(device_profile *p, uint8_t d, uint8_t n);
+void save_effect(device_effect *p, uint8_t d, uint8_t n);
 
 uint8_t get_reset_count();
 
@@ -49,7 +49,7 @@ uint8_t increase_reset_count();
 #define DEVICE_FLAG_TRANSITION (1 << 1)
 
 #define GLOBALS_SIZE sizeof(global_settings)
-#define DEVICE_SIZE sizeof(device_profile)
+#define DEVICE_SIZE sizeof(device_effect)
 
 #define GLOBALS_ADDRESS 0
 #define DEVICE_ADDRESS(d, n) GLOBALS_ADDRESS + GLOBALS_SIZE + DEVICE_SIZE * (n + DEVICE_PROFILE_COUNT  * d)
