@@ -39,6 +39,12 @@ global_settings globals;
 /* The first 3 bytes are the current color, the last 3 bytes are the old color to transition from */
 uint8_t color_converted[6 * DEVICE_COUNT] = {};
 
+#if TRANSITION_EFFECTS
+/* Used when effects are enabled and a brightness transition is about to take place */
+uint8_t transition_brightness_old[DEVICE_COUNT];
+uint8_t transition_brightness_new[DEVICE_COUNT];
+#endif
+
 volatile transition_t transition_frame[DEVICE_COUNT] = {0};
 transition_t transition_frames[DEVICE_COUNT];
 String requestId = "";
@@ -125,7 +131,7 @@ uint32_t autoincrement_to_frames(uint8_t time) {
     return 21600 * FPS;
 }
 
-void convert_color() {
+void convert_color_and_brightness() {
     for(uint8_t d = 0; d < DEVICE_COUNT; ++d) {
         uint8_t index = d * 6;
 
@@ -135,6 +141,11 @@ void convert_color() {
         uint8_t brightness = (globals.flags[d] & GLOBALS_FLAG_ENABLED) ? globals.brightness[d] : 0;
         set_color_manual(color_converted + index, color_brightness(brightness, color_from_buf(globals.color + d * 3)));
         color_brightness(brightness, color_from_buf(globals.color + d * 3));
+
+#if TRANSITION_EFFECTS
+        transition_brightness_old[d] = transition_brightness_new[d];
+        transition_brightness_new[d] = brightness;
+#endif
 
         if(globals.flags[d] & FLAG_QUICK_TRANSITION)
             transition_frames[d] = TRANSITION_QUICK_FRAMES;
@@ -197,7 +208,7 @@ void eeprom_init() {
     load_globals(&globals);
     auto_increment = autoincrement_to_frames(globals.auto_increment);
     refresh_profile();
-    convert_color();
+    convert_color_and_brightness();
 }
 
 uint8_t char2int(char input) {
@@ -456,6 +467,7 @@ void ICACHE_FLASH_ATTR receive_globals() {
 
         uint8_t last_profile = globals.current_profile;
         uint8_t previous_auto_increment = globals.auto_increment;
+
         save_modified();
         memcpy(&globals, bytes, GLOBALS_SIZE);
         if(last_profile != globals.current_profile) {
@@ -473,7 +485,7 @@ void ICACHE_FLASH_ATTR receive_globals() {
         server.send(204);
         requestId = server.header("x-Request-Id");
         quick ? (flags |= FLAG_QUICK_TRANSITION) : (flags &= ~FLAG_QUICK_TRANSITION);
-        convert_color();
+        convert_color_and_brightness();
     }
     else {
 #if SERIAL_DEBUG
@@ -635,7 +647,7 @@ void recover() {
     convert_all_frames();
 
     save_globals(&globals);
-    convert_color();
+    convert_color_and_brightness();
 }
 
 void ICACHE_FLASH_ATTR handle_recover() {
@@ -757,17 +769,23 @@ void loop() {
         led_count_t virtual_led_offset = 0;
         for(uint8_t d = 0; d < DEVICE_COUNT; ++d) {
             uint8_t *p = strip.getPixels() + virtual_led_offset * 3;
-            if((globals.flags[d] & GLOBALS_FLAG_ENABLED || device_flags[d] & DEVICE_FLAG_TRANSITION) &&
-               globals.flags[d] & GLOBALS_FLAG_EFFECTS) {
+            if((globals.flags[d] & GLOBALS_FLAG_ENABLED
+#if TRANSITION_EFFECTS
+                || device_flags[d] & DEVICE_FLAG_TRANSITION
+#endif
+                ) && globals.flags[d] & GLOBALS_FLAG_EFFECTS) {
 
                 device_profile &device = current_profile[d];
                 digital_effect((effect) device.effect, p, virtual_devices_led_count[d], 0,
                                frame + frames[d][TIME_DELAY],
                                frames[d], device.args, device.colors, device.color_count);
 
+#if TRANSITION_EFFECTS
+                int16_t d_brightness = transition_brightness_new[d] - transition_brightness_old[d];
+                uint8_t brightness = transition_brightness_new[d] + (transition_frame[d] * d_brightness / transition_frames[d]);
+#else
                 uint8_t brightness = globals.brightness[d];
-                if(device_flags[d] & DEVICE_FLAG_TRANSITION)
-                    brightness = transition_frame[d] * UINT8_MAX / transition_frames[d];
+#endif
 
                 for(uint8_t i = 0; i < virtual_devices_led_count[d]; ++i) {
                     uint8_t index = i * 3;
@@ -780,7 +798,11 @@ void loop() {
 
                 strip.show();
             }
-            else if(globals.flags[d] & GLOBALS_FLAG_ENABLED || device_flags[d] & DEVICE_FLAG_TRANSITION) {
+            else if(globals.flags[d] & GLOBALS_FLAG_ENABLED || device_flags[d] & DEVICE_FLAG_TRANSITION
+#if !TRANSITION_EFFECTS
+                    && !(globals.flags[d] & GLOBALS_FLAG_EFFECTS)
+#endif
+                    ) {
                 uint8_t index = d * 6;
                 uint8_t color[3];
                 cross_fade(color, color_converted + index, 3, 0,
@@ -801,6 +823,9 @@ void loop() {
             }
 
             if(transition_frame[d] >= transition_frames[d] && device_flags[d] & DEVICE_FLAG_TRANSITION) {
+#if TRANSITION_EFFECTS
+                transition_brightness_old[d] = transition_brightness_new[d];
+#endif
                 memcpy(color_converted + d * 6 + 3, color_converted + d * 6, 3);
                 device_flags[d] &= ~DEVICE_FLAG_TRANSITION;
                 transition_frame[d] = 0;

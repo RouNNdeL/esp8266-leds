@@ -1,0 +1,47 @@
+Exception (0):
+epc1=0x4000e25d epc2=0x00000000 epc3=0x00000000 excvaddr=0x00000000 depc=0x00000000
+
+ctx: cont 
+sp: 3fff1520 end: 3fff17d0 offset: 01a0
+
+>>>stack>>>
+3fff16c0:  3fff04d5 3fff2314 3fff04f0 40204e10  
+3fff16d0:  00000000 00000000 3ffe9884 00000000  
+3fff16e0:  00000000 00000000 00000000 00000000  
+3fff16f0:  0000003c 00000190 00000000 00000001  
+3fff1700:  3fff0438 40106f18 00000008 00000002  
+3fff1710:  00000001 40106f18 3fff2934 00000001  
+3fff1720:  00000000 40106f18 00000001 00000000  
+3fff1730:  00000000 00000000 ffffffff fe000001  
+3fff1740:  3ffe9a18 00000000 fe01ef35 40203e48  
+3fff1750:  00000000 feefeffe feefeffe 00000004  
+3fff1760:  3fff2934 3fff04d5 3fff049c 40204eee  
+3fff1770:  3fff044c 3fff0452 00000002 3ffe9188  
+3fff1780:  00ffffff 40212324 40212310 00000000  
+3fff1790:  00000000 00000000 40106f18 0101a8c0  
+3fff17a0:  00000000 00000000 00000001 3fff07a8  
+3fff17b0:  3fffdad0 00000000 3fff07a1 4020f404  
+3fff17c0:  feefeffe feefeffe 3fff07b0 40100700  
+<<<stack<<<
+
+ ets Jan  8 2013,rst cause:2, boot mode:(3,6)
+
+load 0x4010f000, len 1384, room 16 
+tail 8
+chksum 0x2d
+csum 0x2d
+v614f7c32
+~ld
+
+|---------------------------|
+|------ Begin Startup ------|
+| LED Controller by RouNdeL |
+|---------------------------|
+Version Name: 1.0
+Version Code: 22
+Build Date: 17:08:27@Jul  4 2018
+Device Id: iot_0
+*WM: 
+*WM: AutoConnect
+*WM: Connecting as wifi client...
+*WM: Using last saved values, should be faster

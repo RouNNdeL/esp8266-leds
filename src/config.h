@@ -16,6 +16,11 @@
 #define FPS 100
 #define TRANSITION_FRAMES 50
 #define TRANSITION_QUICK_FRAMES 35
+/*
+ * The tradition doesn't look well, probably due to more calculations taking place,
+ * hence the option to disable it
+ */
+#define TRANSITION_EFFECTS 0
 
 #if TRANSITION_FRAMES <= 255 && TRANSITION_QUICK_FRAMES <= 255
 typedef uint8_t transition_t;
