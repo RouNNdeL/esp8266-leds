@@ -6,8 +6,8 @@
 #define WIFICONTROLLER_CONFIG_H
 
 
-#define VERSION_CODE 24
-#define VERSION_NAME "1.11"
+#define VERSION_CODE 25
+#define VERSION_NAME "1.2"
 #define BUILD_DATE (String(__TIME__)+"@" + __DATE__)
 #define REQUEST_RETIRES 10
 #define RECOVERY_ATTEMPTS 3
