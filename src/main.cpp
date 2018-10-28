@@ -516,7 +516,7 @@ void ICACHE_FLASH_ATTR receive_profile() {
         }
         else {
             device_profile tmp;
-            memcpy(&tmp, bytes + 1, DEVICE_SIZE);
+            memcpy(&tmp, bytes + 2, DEVICE_SIZE);
             save_profile(&tmp, bytes[1], bytes[0]);
         }
         server.send(204);
