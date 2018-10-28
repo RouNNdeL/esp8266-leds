@@ -630,6 +630,11 @@ digital_effect(effect effect, uint8_t *leds, led_count_t led_count, uint8_t star
                           (frame % times[TIME_ROTATION]) * args[ARG_SPECTRUM_COLOR_COUNT] / times[TIME_ROTATION] : 0;
         uint8_t m_color = (n_color + 1) % args[ARG_SPECTRUM_COLOR_COUNT];
 
+        /* Need a second copy of those for fading */
+        uint8_t _current_progress = current_progress;
+        uint8_t _n_color = n_color;
+        uint8_t _m_color = m_color;
+
         for(uint8_t i = 0; i < led_count; ++i) {
             led_index_t index =
                     (((args[ARG_BIT_PACK] & DIRECTION) ? i : led_count - i - 1) + start_led) % led_count * 3;
@@ -653,7 +658,6 @@ digital_effect(effect effect, uint8_t *leds, led_count_t led_count, uint8_t star
             }
         }
 
-
         /*
          * Due to a possibility of blending modes being different between adjacent sets of colors
          * we cannot simply precalculate the faded values and apply spectrum to them.
@@ -671,23 +675,23 @@ digital_effect(effect effect, uint8_t *leds, led_count_t led_count, uint8_t star
                         (((args[ARG_BIT_PACK] & DIRECTION) ? i : led_count - i - 1) + start_led) % led_count * 3;
 
                 if(args[ARG_SPECTRUM_MODES] & (1 << run))
-                    cross_fade(tmp_color, colors, (base_color + n_color) * 3, (base_color + m_color) * 3,
-                               current_progress);
+                    cross_fade(tmp_color, colors, (base_color + _n_color) * 3, (base_color + _m_color) * 3,
+                               _current_progress);
                 else
-                    cross_fade_bright(tmp_color, color_from_buf(colors + (base_color + n_color) * 3),
-                                      color_from_buf(colors + (base_color + m_color) * 3), current_progress);
+                    cross_fade_bright(tmp_color, color_from_buf(colors + (base_color + _n_color) * 3),
+                                      color_from_buf(colors + (base_color + _m_color) * 3), _current_progress);
 
                 /* Fade between 2 colors from adjacent spectrum sets  */
                 cross_fade_values(leds + index, color_from_buf(leds + index), color_from_buf(tmp_color), fade_progress);
 
-                if(current_progress >= UINT8_MAX - progress_per_led) {
+                if(_current_progress >= UINT8_MAX - progress_per_led) {
                     /* Increment the color */
-                    n_color = (n_color + 1) % args[ARG_SPECTRUM_COLOR_COUNT];
-                    m_color = (m_color + 1) % args[ARG_SPECTRUM_COLOR_COUNT];
-                    current_progress = progress_per_led - (UINT8_MAX - current_progress);
+                    _n_color = (_n_color + 1) % args[ARG_SPECTRUM_COLOR_COUNT];
+                    _m_color = (_m_color + 1) % args[ARG_SPECTRUM_COLOR_COUNT];
+                    _current_progress = progress_per_led - (UINT8_MAX - _current_progress);
                 }
                 else {
-                    current_progress += progress_per_led;
+                    _current_progress += progress_per_led;
                 }
             }
         }
