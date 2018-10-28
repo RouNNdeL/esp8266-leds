@@ -153,7 +153,6 @@ void convert_color_and_brightness() {
             transition_frames[d] = TRANSITION_FRAMES;
         device_flags[d] |= DEVICE_FLAG_TRANSITION;
     }
-
 }
 
 
@@ -209,6 +208,14 @@ void eeprom_init() {
     auto_increment = autoincrement_to_frames(globals.auto_increment);
     refresh_profile();
     convert_color_and_brightness();
+    for(int d = 0; d < DEVICE_COUNT; ++d) {
+#if TRANSITION_EFFECTS
+        transition_brightness_old[d] = transition_brightness_new[d];
+#endif
+        memcpy(color_converted + d * 6 + 3, color_converted + d * 6, 3);
+        device_flags[d] &= ~DEVICE_FLAG_TRANSITION;
+        transition_frame[d] = 0;
+    }
 }
 
 uint8_t char2int(char input) {
@@ -483,7 +490,6 @@ void ICACHE_FLASH_ATTR receive_globals() {
         save_globals(&globals);
 
         server.send(204);
-        requestId = server.header("x-Request-Id");
         quick ? (flags |= FLAG_QUICK_TRANSITION) : (flags &= ~FLAG_QUICK_TRANSITION);
         convert_color_and_brightness();
     }
