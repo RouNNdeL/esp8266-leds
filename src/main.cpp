@@ -29,13 +29,16 @@ os_timer_t frameTimer;
 volatile uint32_t frame;
 volatile uint8_t flags;
 
-led_count_t virtual_devices[DEVICE_COUNT] = VIRTUAL_DEVICES;
+led_count_t virtual_devices_led_count[DEVICE_COUNT] = VIRTUAL_DEVICES;
+
+uint8_t device_flags[DEVICE_COUNT];
 
 global_settings globals;
 #define increment_profile() globals.current_profile = (globals.current_profile+1)%globals.profile_count
 
 /* The first 3 bytes are the current color, the last 3 bytes are the old color to transition from */
 uint8_t color_converted[6 * DEVICE_COUNT] = {};
+
 volatile transition_t transition_frame[DEVICE_COUNT] = {0};
 transition_t transition_frames[DEVICE_COUNT];
 String requestId = "";
@@ -49,14 +52,14 @@ uint32_t auto_increment;
 #define SET 1
 #define NOT_SET 0
 
-#define all_enabled() all_any_flag_set(GLOBALS_FLAG_ENABLED, ALL, SET)
-#define any_enabled() all_any_flag_set(GLOBALS_FLAG_ENABLED, ANY, SET)
-#define all_disabled() all_any_flag_set(GLOBALS_FLAG_ENABLED, ALL, NOT_SET)
-#define any_disabled() all_any_flag_set(GLOBALS_FLAG_ENABLED, ANY, NOT_SET)
+#define all_enabled() all_any_flag_set(globals.flags, GLOBALS_FLAG_ENABLED, ALL, SET)
+#define any_enabled() all_any_flag_set(globals.flags, GLOBALS_FLAG_ENABLED, ANY, SET)
+#define all_disabled() all_any_flag_set(globals.flags, GLOBALS_FLAG_ENABLED, ALL, NOT_SET)
+#define any_disabled() all_any_flag_set(globals.flags, GLOBALS_FLAG_ENABLED, ANY, NOT_SET)
 
-uint8_t all_any_flag_set(uint8_t flag, uint8_t any, uint8_t set) {
+uint8_t all_any_flag_set(uint8_t *flag_array, uint8_t flag, uint8_t any, uint8_t set) {
     for(uint8_t i = 0; i < DEVICE_COUNT; ++i) {
-        if(globals.flags[i] & flag ^ set ^ any)
+        if(flag_array[i] & flag ^ set ^ any)
             return any;
     }
     return !any;
@@ -137,15 +140,26 @@ void convert_color() {
             transition_frames[d] = TRANSITION_QUICK_FRAMES;
         else
             transition_frames[d] = TRANSITION_FRAMES;
-        globals.flags[d] |= GLOBALS_FLAG_TRANSITION;
+        device_flags[d] |= DEVICE_FLAG_TRANSITION;
     }
 
 }
 
+
+void save_modified() {
+    for(uint8_t d = 0; d < DEVICE_COUNT; ++d) {
+        if(device_flags[d] & DEVICE_FLAG_EFFECT_UPDATED) {
+            save_profile(&current_profile[d], d, globals.current_device_profile[d]);
+            device_flags[d] &= ~DEVICE_FLAG_EFFECT_UPDATED;
+        }
+    }
+}
+
 void refresh_devices() {
-    for(uint8_t d = 0; d < DEVICE_COUNT; d++) {
+    for(uint8_t d = 0; d < DEVICE_COUNT; ++d) {
         load_device(&current_profile[d], d, globals.current_device_profile[d]);
     }
+    convert_all_frames();
 }
 
 void load_profile(uint8_t n) {
@@ -168,7 +182,7 @@ void timerCallback(void *pArg) {
     flags |= FLAG_NEW_FRAME;
     frame++;
     for(int d = 0; d < DEVICE_COUNT; ++d) {
-        if(globals.flags[d] & GLOBALS_FLAG_TRANSITION) {
+        if(device_flags[d] & DEVICE_FLAG_TRANSITION) {
             transition_frame[d]++;
         }
     }
@@ -203,7 +217,7 @@ void setStripStatus(uint8_t r, uint8_t g, uint8_t b) {
         if(!(globals.flags[d] & GLOBALS_FLAG_STATUSES))
             return;
         strip.setBrightness(UINT8_MAX);
-        for(led_count_t j = 0; j < virtual_devices[d]; ++j) {
+        for(led_count_t j = 0; j < virtual_devices_led_count[d]; ++j) {
             if(j % 4) {
                 set_color_manual(p, grb(color_brightness(12, r, g, b)));
             }
@@ -212,7 +226,7 @@ void setStripStatus(uint8_t r, uint8_t g, uint8_t b) {
             }
         }
         strip.show();
-        virtual_led_offset += virtual_devices[d];
+        virtual_led_offset += virtual_devices_led_count[d];
     }
 }
 
@@ -399,7 +413,7 @@ void ICACHE_FLASH_ATTR debug_info() {
     content += "<p>auto_increment frames: <b>" + String(auto_increment) + "</b></p>";
     content += "<p>current_profile: <b>" + String(globals.current_profile) + "</b></p>";
     content += "<p>current_device_profile: <b>[";
-    for(uint8_t i = 0; i < PROFILE_COUNT; i++) {
+    for(uint8_t i = 0; i < DEVICE_COUNT; i++) {
         if(i) content += ",";
         content += String(globals.current_device_profile[i]);
     }
@@ -442,6 +456,7 @@ void ICACHE_FLASH_ATTR receive_globals() {
 
         uint8_t last_profile = globals.current_profile;
         uint8_t previous_auto_increment = globals.auto_increment;
+        save_modified();
         memcpy(&globals, bytes, GLOBALS_SIZE);
         if(last_profile != globals.current_profile) {
             frame = 0;
@@ -485,7 +500,7 @@ void ICACHE_FLASH_ATTR receive_profile() {
         if(globals.current_device_profile[bytes[1]] == bytes[0]) {
             memcpy(&current_profile[bytes[1]], bytes + 2, DEVICE_SIZE);
             convert_all_frames();
-            globals.flags[bytes[1]] |= GLOBALS_FLAG_PROFILE_UPDATED;
+            device_flags[bytes[1]] |= DEVICE_FLAG_EFFECT_UPDATED;
         }
         else {
             device_profile tmp;
@@ -503,14 +518,22 @@ void ICACHE_FLASH_ATTR receive_profile() {
     }
 }
 
-void ICACHE_FLASH_ATTR explicit_save() {
-    for(uint8_t d = 0; d < DEVICE_COUNT; ++d) {
-        if(globals.flags[d] & GLOBALS_FLAG_PROFILE_UPDATED) {
-            save_profile(&current_profile[d], d, globals.current_device_profile[d]);
-            globals.flags[d] &= ~GLOBALS_FLAG_PROFILE_UPDATED;
+void ICACHE_FLASH_ATTR preview_effect() {
+    if(server.hasArg("plain") && server.arg("plain").length() == 4 && server.method() == HTTP_PUT) {
+        uint8_t bytes[2];
+        auto c = server.arg("plain");
+        for(uint8_t i = 0; i < sizeof(bytes); ++i) {
+            bytes[i] = char2int(c[i * 2]) * 16 + char2int(c[i * 2 + 1]);
+        }
+        if(globals.current_device_profile[bytes[1]] != bytes[0]) {
+            if(device_flags[bytes[1]] & DEVICE_FLAG_EFFECT_UPDATED) {
+                save_profile(&current_profile[bytes[1]], bytes[1], globals.current_device_profile[bytes[1]]);
+                device_flags[bytes[1]] &= ~DEVICE_FLAG_EFFECT_UPDATED;
+            }
+            load_device(&current_profile[bytes[1]], bytes[1], bytes[0]);
         }
     }
-    server.send(200);
+    server.send(204);
 }
 
 void ICACHE_FLASH_ATTR handle_halt() {
@@ -695,7 +718,7 @@ void setup() {
         server.on("/profile", receive_profile);
         server.on("/api", send_json);
         server.on("/update", manual_update_check);
-        server.on("/save", explicit_save);
+        server.on("/preview", preview_effect);
         server.on("/apply_update", apply_update);
 
         const char *headers[] = {"x-Request-Id"};
@@ -720,7 +743,8 @@ void loop() {
     ArduinoOTA.handle();
 
     /* We do not want the transition to lag, so we don't handle the client */
-    if(halt() || all_any_flag_set(GLOBALS_FLAG_TRANSITION, ALL, NOT_SET) || flags & FLAG_QUICK_TRANSITION) {
+    if(halt() || all_any_flag_set(device_flags, DEVICE_FLAG_TRANSITION, ALL, NOT_SET) ||
+       flags & FLAG_QUICK_TRANSITION) {
         server.handleClient();
     }
 
@@ -733,18 +757,19 @@ void loop() {
         led_count_t virtual_led_offset = 0;
         for(uint8_t d = 0; d < DEVICE_COUNT; ++d) {
             uint8_t *p = strip.getPixels() + virtual_led_offset * 3;
-            if((globals.flags[d] & GLOBALS_FLAG_ENABLED || globals.flags[d] & GLOBALS_FLAG_TRANSITION) &&
+            if((globals.flags[d] & GLOBALS_FLAG_ENABLED || device_flags[d] & DEVICE_FLAG_TRANSITION) &&
                globals.flags[d] & GLOBALS_FLAG_EFFECTS) {
 
                 device_profile &device = current_profile[d];
-                digital_effect((effect) device.effect, p, virtual_devices[d], 0, frame + frames[d][TIME_DELAY],
+                digital_effect((effect) device.effect, p, virtual_devices_led_count[d], 0,
+                               frame + frames[d][TIME_DELAY],
                                frames[d], device.args, device.colors, device.color_count);
 
                 uint8_t brightness = globals.brightness[d];
-                /*if(globals.flags[d] & GLOBALS_FLAG_TRANSITION)
-                    brightness = transition_frame[d] * brightness / transition_frames[d];*/
+                if(device_flags[d] & DEVICE_FLAG_TRANSITION)
+                    brightness = transition_frame[d] * UINT8_MAX / transition_frames[d];
 
-                for(uint8_t i = 0; i < virtual_devices[d]; ++i) {
+                for(uint8_t i = 0; i < virtual_devices_led_count[d]; ++i) {
                     uint8_t index = i * 3;
 
                     set_color_manual(p + index, color_brightness(brightness, color_from_buf(p + index)));
@@ -755,7 +780,7 @@ void loop() {
 
                 strip.show();
             }
-            else if(globals.flags[d] & GLOBALS_FLAG_ENABLED || globals.flags[d] & GLOBALS_FLAG_TRANSITION) {
+            else if(globals.flags[d] & GLOBALS_FLAG_ENABLED || device_flags[d] & DEVICE_FLAG_TRANSITION) {
                 uint8_t index = d * 6;
                 uint8_t color[3];
                 cross_fade(color, color_converted + index, 3, 0,
@@ -763,7 +788,7 @@ void loop() {
                 color[index] = actual_brightness(color[index]);
                 color[index + 1] = actual_brightness(color[index + 1]);
                 color[index + 2] = actual_brightness(color[index + 2]);
-                for(led_count_t i = 0; i < virtual_devices[d]; ++i) {
+                for(led_count_t i = 0; i < virtual_devices_led_count[d]; ++i) {
                     set_color_manual(p + i * 3, grb(color_from_buf(color)));
                 }
                 strip.show();
@@ -775,20 +800,20 @@ void loop() {
                 strip.show();
             }
 
-            if(transition_frame[d] >= transition_frames[d] && globals.flags[d] & GLOBALS_FLAG_TRANSITION) {
+            if(transition_frame[d] >= transition_frames[d] && device_flags[d] & DEVICE_FLAG_TRANSITION) {
                 memcpy(color_converted + d * 6 + 3, color_converted + d * 6, 3);
-                globals.flags[d] &= ~GLOBALS_FLAG_TRANSITION;
+                device_flags[d] &= ~DEVICE_FLAG_TRANSITION;
                 transition_frame[d] = 0;
             }
 
-            virtual_led_offset += virtual_devices[d];
+            virtual_led_offset += virtual_devices_led_count[d];
         }
 
         if(auto_increment && frame && frame % auto_increment == 0 && any_enabled() && globals.profile_count > 1) {
             for(uint8_t d = 0; d < DEVICE_COUNT; ++d) {
-                if(globals.flags[d] & GLOBALS_FLAG_PROFILE_UPDATED) {
+                if(device_flags[d] & DEVICE_FLAG_EFFECT_UPDATED) {
                     save_profile(&current_profile[d], d, globals.current_device_profile[d]);
-                    globals.flags[d] &= ~GLOBALS_FLAG_PROFILE_UPDATED;
+                    device_flags[d] &= ~DEVICE_FLAG_EFFECT_UPDATED;
                 }
             }
             increment_profile();
