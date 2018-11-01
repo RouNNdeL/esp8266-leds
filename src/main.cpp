@@ -17,6 +17,7 @@ extern "C" {
 
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 ESP8266WebServer server(80);
+WiFiUDP udp;
 
 #define FLAG_NEW_FRAME (1 << 0)
 #define FLAG_QUICK_TRANSITION (1 << 2)
@@ -238,8 +239,7 @@ void setStripStatus(uint8_t r, uint8_t g, uint8_t b) {
         for(led_count_t j = 0; j < virtual_devices_led_count[d]; ++j) {
             if(j % 4) {
                 set_color_manual(p, grb(color_brightness(12, r, g, b)));
-            }
-            else {
+            } else {
                 set_color_manual(p, grb(r, g, b));
             }
         }
@@ -466,8 +466,7 @@ void ICACHE_FLASH_ATTR receive_globals() {
             }
             if(c[j] == '?' && c[j + 1] == '?') {
                 bytes[i] = ((uint8_t *) &globals)[i];
-            }
-            else {
+            } else {
                 bytes[i] = char2int(c[j]) * 16 + char2int(c[j + 1]);
             }
         }
@@ -480,8 +479,7 @@ void ICACHE_FLASH_ATTR receive_globals() {
         if(last_profile != globals.current_profile) {
             frame = 0;
             refresh_profile();
-        }
-        else {
+        } else {
             refresh_devices();
         }
         if(previous_auto_increment != globals.auto_increment) {
@@ -492,8 +490,7 @@ void ICACHE_FLASH_ATTR receive_globals() {
         server.send(204);
         quick ? (flags |= FLAG_QUICK_TRANSITION) : (flags &= ~FLAG_QUICK_TRANSITION);
         convert_color_and_brightness();
-    }
-    else {
+    } else {
 #if SERIAL_DEBUG
         server.send(400, "text/html", "<h2>HTTP 400 Invalid Request</h2>");
 #else
@@ -519,15 +516,13 @@ void ICACHE_FLASH_ATTR receive_profile() {
             memcpy(&current_effect[bytes[1]], bytes + 2, DEVICE_SIZE);
             convert_all_frames();
             device_flags[bytes[1]] |= DEVICE_FLAG_EFFECT_UPDATED;
-        }
-        else {
+        } else {
             device_effect tmp;
             memcpy(&tmp, bytes + 2, DEVICE_SIZE);
             save_effect(&tmp, bytes[1], bytes[0]);
         }
         server.send(204);
-    }
-    else {
+    } else {
 #if SERIAL_DEBUG
         server.send(400, "text/html", "<h2>HTTP 400 Invalid Request</h2>");
 #else
@@ -669,16 +664,14 @@ void setup() {
 #if SERIAL_DEBUG
             Serial.println("HALT");
 #endif /* SERIAL_DEBUG */
-        }
-        else if(get_reset_count() > RESTART_ATTEMPTS) {
+        } else if(get_reset_count() > RESTART_ATTEMPTS) {
             recover();
 #if SERIAL_DEBUG
             Serial.println("Attempting to recover");
 #endif /* SERIAL_DEBUG */
         }
         increase_reset_count();
-    }
-    else {
+    } else {
         set_reset_count(0);
     }
 
@@ -725,9 +718,11 @@ void setup() {
         server.collectHeaders(headers, headers_size);
 
         server.begin();
+
+        udp.begin(88);
+
         user_init();
-    }
-    else {
+    } else {
         sendDeviceHalted();
         server.on("/", handle_halt);
         server.begin();
@@ -750,6 +745,25 @@ void loop() {
     if(halt())
         return;
 
+    int packetSize = udp.parsePacket();
+    if(packetSize) {
+        uint8_t data[5];
+        uint8_t len = (uint8_t) udp.read(data, 5);
+        if(len > 0) {
+            if(data[1] < DEVICE_COUNT) {
+                if(data[0] == 0 && len == 3) {
+                    globals.brightness[data[1]] = data[2];
+                    convert_color_and_brightness();
+                    save_globals(&globals);
+                } else if(data[0] == 1 && len == 5) {
+                    set_color_manual(globals.color + 3 * data[1], color_from_buf(data + 2));
+                    convert_color_and_brightness();
+                    save_globals(&globals);
+                }
+            }
+        }
+    }
+
     if(flags & FLAG_NEW_FRAME) {
         flags &= ~FLAG_NEW_FRAME;
 
@@ -758,9 +772,9 @@ void loop() {
             uint8_t *p = strip.getPixels() + virtual_led_offset * 3;
             if((globals.flags[d] & GLOBALS_FLAG_ENABLED
 #if TRANSITION_EFFECTS
-                || device_flags[d] & DEVICE_FLAG_TRANSITION
+                       || device_flags[d] & DEVICE_FLAG_TRANSITION
 #endif
-                ) && globals.flags[d] & GLOBALS_FLAG_EFFECTS) {
+               ) && globals.flags[d] & GLOBALS_FLAG_EFFECTS) {
 
                 device_effect &device = current_effect[d];
                 digital_effect((effect) device.effect, p, virtual_devices_led_count[d], 0,
@@ -784,10 +798,9 @@ void loop() {
                 }
 
                 strip.show();
-            }
-            else if(globals.flags[d] & GLOBALS_FLAG_ENABLED || device_flags[d] & DEVICE_FLAG_TRANSITION
-#if !TRANSITION_EFFECTS
-                    && !(globals.flags[d] & GLOBALS_FLAG_EFFECTS)
+            } else if(globals.flags[d] & GLOBALS_FLAG_ENABLED || device_flags[d] & DEVICE_FLAG_TRANSITION
+                                                                 #if !TRANSITION_EFFECTS
+                                                                 && !(globals.flags[d] & GLOBALS_FLAG_EFFECTS)
 #endif
                     ) {
                 uint8_t index = d * 6;
@@ -801,8 +814,7 @@ void loop() {
                     set_color_manual(p + i * 3, grb(color_from_buf(color)));
                 }
                 strip.show();
-            }
-            else {
+            } else {
                 for(led_count_t i = 0; i < LED_COUNT; ++i) {
                     set_color_manual(p + i * 3, grb(COLOR_BLACK));
                 }
