@@ -141,7 +141,6 @@ void convert_color_and_brightness() {
 
         uint8_t brightness = (globals.flags[d] & GLOBALS_FLAG_ENABLED) ? globals.brightness[d] : 0;
         set_color_manual(color_converted + index, color_brightness(brightness, color_from_buf(globals.color + d * 3)));
-        color_brightness(brightness, color_from_buf(globals.color + d * 3));
 
 #if TRANSITION_EFFECTS
         transition_brightness_old[d] = transition_brightness_new[d];
@@ -807,9 +806,9 @@ void loop() {
                 uint8_t color[3];
                 cross_fade(color, color_converted + index, 3, 0,
                            transition_frame[d] * UINT8_MAX / transition_frames[d]);
-                color[index] = actual_brightness(color[index]);
-                color[index + 1] = actual_brightness(color[index + 1]);
-                color[index + 2] = actual_brightness(color[index + 2]);
+                color[0] = actual_brightness(color[0]);
+                color[1] = actual_brightness(color[1]);
+                color[2] = actual_brightness(color[2]);
                 for(led_count_t i = 0; i < virtual_devices_led_count[d]; ++i) {
                     set_color_manual(p + i * 3, grb(color_from_buf(color)));
                 }
