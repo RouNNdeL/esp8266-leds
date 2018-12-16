@@ -230,21 +230,9 @@ uint8_t char2int(char input) {
 
 void setStripStatus(uint8_t r, uint8_t g, uint8_t b) {
     led_count_t virtual_led_offset = 0;
-    for(uint8_t d = 0; d < DEVICE_COUNT; ++d) {
-        uint8_t *p = strip.getPixels() + virtual_led_offset * 3;
-        if(!(globals.flags[d] & GLOBALS_FLAG_STATUSES))
-            return;
-        strip.setBrightness(UINT8_MAX);
-        for(led_count_t j = 0; j < virtual_devices_led_count[d]; ++j) {
-            if(j % 4) {
-                set_color_manual(p, grb(color_brightness(12, r, g, b)));
-            } else {
-                set_color_manual(p, grb(r, g, b));
-            }
-        }
-        strip.show();
-        virtual_led_offset += virtual_devices_led_count[d];
-    }
+    set_color_manual(strip.getPixels(), g, r, b);
+    set_color_manual(strip.getPixels()+3, color_brightness(128, g, r, b));
+    set_color_manual(strip.getPixels()+6, g, r, b);
 }
 
 int32_t checkUpdate() {
@@ -282,7 +270,6 @@ int32_t checkUpdate() {
 }
 
 HTTPUpdateResult update(uint8_t reboot) {
-    setStripStatus(COLOR_MAGENTA);
 #if SERIAL_DEBUG
     Serial.println("[OTA] Checking for updates...");
 #endif /* SERIAL_DEBUG */
@@ -301,7 +288,7 @@ HTTPUpdateResult update(uint8_t reboot) {
 #if SERIAL_DEBUG
             Serial.println("[OTA] Update failed");
 #endif /* SERIAL_DEBUG */
-            setStripStatus(COLOR_RED);
+            setStripStatus(COLOR_MAGENTA);
             yield();
             delay(1000);
             break;
@@ -309,13 +296,10 @@ HTTPUpdateResult update(uint8_t reboot) {
 #if SERIAL_DEBUG
             Serial.println("[OTA] No update");
 #endif
-            setStripStatus(rgb(244, 165, 0));
-            yield();
-            delay(1000);
             break;
         case HTTP_UPDATE_OK:
 #if SERIAL_DEBUG
-            Serial.println("[OTA] Update successful"); // may not called we reboot the ESP
+            Serial.println("[OTA] Update successful"); // may not be called we reboot the ESP
 #endif /* SERIAL_DEBUG */
             setStripStatus(COLOR_GREEN);
             yield();
