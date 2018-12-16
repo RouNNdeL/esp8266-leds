@@ -11,6 +11,7 @@
 #define BUILD_DATE (String(__TIME__)+"@" + __DATE__)
 #define REQUEST_RETIRES 10
 #define RECOVERY_ATTEMPTS 3
+#define WATCHDOG_RESTARTS_RECOVERY 5
 #define RESTART_ATTEMPTS 2
 
 #define FPS 100
@@ -68,11 +69,11 @@ typedef uint16_t transition_t;
 #define UDP_DISCOVERY_RESPONSE "ROUNDEL_IOT_RESPONSE"
 
 #ifndef PROFILE_COUNT
-#define PROFILE_COUNT 24
+#define PROFILE_COUNT 8
 #endif /* PROFILE_COUNT */
 
 #ifndef DEVICE_PROFILE_COUNT
-#define DEVICE_PROFILE_COUNT 24
+#define DEVICE_PROFILE_COUNT 8
 #endif /* DEVICE_PROFILE_COUNT */
 
 #ifndef DEVICE_COUNT

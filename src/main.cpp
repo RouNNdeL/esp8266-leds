@@ -651,23 +651,41 @@ void setup() {
     Serial.println("Version Code: " + String(VERSION_CODE));
     Serial.println("Build Date: " + BUILD_DATE);
     Serial.println("Device Id: " + String(DEVICE_ID));
+    Serial.println("Reset reason: " + ESP.getResetReason());
+
 #endif /* SERIAL_DEBUG */
 
     EEPROM.begin(SPI_FLASH_SEC_SIZE);
     if(ESP.getResetInfoPtr()->reason == REASON_EXCEPTION_RST) {
 #if SERIAL_DEBUG
-        Serial.println("Exception detected: " + String(get_reset_count() + 1));
+        Serial.println("[RECOVERY] Exception detected: " + String(get_reset_count() + 1));
 #endif /* SERIAL_DEBUG */
         if(get_reset_count() > RECOVERY_ATTEMPTS) {
             flags |= FLAG_HALT;
 #if SERIAL_DEBUG
-            Serial.println("HALT");
+            Serial.println("[RECOVERY] HALT");
 #endif /* SERIAL_DEBUG */
         } else if(get_reset_count() > RESTART_ATTEMPTS) {
-            recover();
 #if SERIAL_DEBUG
-            Serial.println("Attempting to recover");
+            Serial.println("[RECOVERY] Attempting to recover");
 #endif /* SERIAL_DEBUG */
+            recover();
+        }
+        increase_reset_count();
+    } else if(ESP.getResetInfoPtr()->reason == REASON_SOFT_WDT_RST) {
+#if SERIAL_DEBUG
+        Serial.println("[RECOVERY] Software watchdog restart detected: " + String(get_reset_count() + 1));
+#endif /* SERIAL_DEBUG */
+        if(get_reset_count() > WATCHDOG_RESTARTS_RECOVERY + RECOVERY_ATTEMPTS) {
+            flags |= FLAG_HALT;
+#if SERIAL_DEBUG
+            Serial.println("[RECOVERY] HALT");
+#endif /* SERIAL_DEBUG */
+        } else if(get_reset_count() > WATCHDOG_RESTARTS_RECOVERY) {
+#if SERIAL_DEBUG
+            Serial.println("[RECOVERY] Attempting to recover");
+#endif /* SERIAL_DEBUG */
+            recover();
         }
         increase_reset_count();
     } else {
